@@ -17,6 +17,6 @@ docker compose up -d --build        # creates .env from .env.example and an APP_
 docker compose exec app php artisan migrate --seed
 ```
 
-API: http://localhost:8000 · phpMyAdmin: http://localhost:8080 · MySQL: 127.0.0.1:3306 (blitzmove / secret) · Redis: 6379. The project folder is mounted into the containers, so code changes apply without a rebuild.
+API: http://localhost:8100 · phpMyAdmin: http://localhost:8180 · MySQL: 127.0.0.1:3307 (blitzmove / secret) · Redis: 6380. These host ports avoid clashing with other local projects on 8000/8080/3306/6379; override them with APP_PORT, PHPMYADMIN_PORT, FORWARD_DB_PORT and FORWARD_REDIS_PORT in `.env`. The project folder is mounted into the containers, so code changes apply without a rebuild.
 
 Key code: `app/Services` (TripService, OrderService, ItineraryService, DocumentService, Routing/), `app/Enums` (status transitions), `routes/api.php`, `tests/Feature`.

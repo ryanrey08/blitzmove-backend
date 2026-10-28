@@ -23,7 +23,7 @@ services:
     image: nginx:1.27-alpine
     container_name: blitzmove-nginx
     ports:
-      - "8000:80"
+      - "${APP_PORT:-8100}:80"
     volumes:
       - ./:/var/www
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
@@ -39,7 +39,7 @@ services:
       MYSQL_PASSWORD: secret
       MYSQL_ROOT_PASSWORD: secret
     ports:
-      - "3306:3306"
+      - "${FORWARD_DB_PORT:-3307}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -52,7 +52,7 @@ services:
     image: redis:7-alpine
     container_name: blitzmove-redis
     ports:
-      - "6379:6379"
+      - "${FORWARD_REDIS_PORT:-6380}:6379"
 
   phpmyadmin:
     image: phpmyadmin:5-apache
@@ -63,7 +63,7 @@ services:
       PMA_USER: blitzmove
       PMA_PASSWORD: secret
     ports:
-      - "8080:80"
+      - "${PHPMYADMIN_PORT:-8180}:80"
     depends_on:
       - db
 
