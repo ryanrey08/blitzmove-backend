@@ -1,25 +1,25 @@
-# BlitzMove API - PHP 8.3 (FPM + Apache) serving Laravel's public/ directory.
-# serversideup/php ships pdo_mysql, zip, opcache and Composer, so no OS packages are compiled here.
-FROM serversideup/php:8.3-fpm-apache
+# BlitzMove API - PHP 8.3 FPM. nginx (see docker-compose.yml) serves public/ and passes PHP to this container.
+FROM php:8.3-fpm
 
-ENV PHP_OPCACHE_ENABLE=1 \
-    PHP_UPLOAD_MAX_FILE_SIZE=12M \
-    PHP_POST_MAX_SIZE=14M \
-    PHP_MEMORY_LIMIT=256M \
-    SSL_MODE=off
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git unzip libzip-dev libicu-dev \
+    && docker-php-ext-install pdo_mysql zip intl bcmath opcache \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && rm -rf /var/lib/apt/lists/* /tmp/pear
 
-WORKDIR /var/www/html
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Dependencies first for better layer caching
-COPY --chown=www-data:www-data composer.json composer.lock ./
-RUN composer install --no-dev --no-interaction --no-progress --prefer-dist --no-scripts --no-autoloader
+WORKDIR /var/www
 
-COPY --chown=www-data:www-data . .
-RUN composer dump-autoload --optimize --no-dev \
-    && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs storage/app/private bootstrap/cache
+# Dependencies first for better layer caching. The vendor_data volume is seeded from this on first start.
+COPY composer.json composer.lock ./
+RUN composer install --no-interaction --no-progress --prefer-dist --no-scripts --no-autoloader
 
-# Runs before the web server starts (see serversideup/php entrypoint.d)
-COPY --chmod=755 docker/50-blitzmove-init.sh /etc/entrypoint.d/50-blitzmove-init.sh
+COPY . .
+RUN composer dump-autoload --optimize \
+    && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs storage/app/private bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache
 
-EXPOSE 8080
-HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 CMD curl -fsS http://localhost:8080/up || exit 1
+EXPOSE 9000
+CMD ["php-fpm"]

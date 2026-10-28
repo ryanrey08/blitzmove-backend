@@ -10,6 +10,13 @@ php artisan serve
 php artisan test
 ```
 
-Docker (API + MySQL only): fill `.env` (APP_KEY, DB_PASSWORD, DB_ROOT_PASSWORD), then run `docker compose up --build`.
+Docker (php-fpm + nginx + MySQL + Redis + phpMyAdmin):
+
+```bash
+docker compose up -d --build        # creates .env from .env.example and an APP_KEY on first start
+docker compose exec app php artisan migrate --seed
+```
+
+API: http://localhost:8000 · phpMyAdmin: http://localhost:8080 · MySQL: 127.0.0.1:3306 (blitzmove / secret) · Redis: 6379. The project folder is mounted into the containers, so code changes apply without a rebuild.
 
 Key code: `app/Services` (TripService, OrderService, ItineraryService, DocumentService, Routing/), `app/Enums` (status transitions), `routes/api.php`, `tests/Feature`.
