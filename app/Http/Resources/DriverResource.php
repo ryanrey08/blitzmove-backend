@@ -25,6 +25,13 @@ class DriverResource extends JsonResource
             'date_hired' => $this->date_hired?->toDateString(),
             'status' => $this->status?->value,
             'notes' => $this->notes,
+            'date_of_birth' => $this->date_of_birth?->toDateString(),
+            'license_restrictions' => $this->license_restrictions,
+            'emergency_contact_name' => $this->emergency_contact_name,
+            'emergency_contact_phone' => $this->emergency_contact_phone,
+            'emergency_contact_relation' => $this->emergency_contact_relation,
+            // API path of the photo; open it through the API client.
+            'photo' => $this->photo_path ? "drivers/{$this->id}/photo" : null,
             'assigned_vehicle' => VehicleResource::make($this->whenLoaded('assignedVehicle')),
             'documents_count' => $this->whenCounted('documents'),
             'trips_count' => $this->whenCounted('trips'),

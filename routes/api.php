@@ -48,6 +48,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('drivers/summary', [DriverController::class, 'summary']);
         Route::apiResource('drivers', DriverController::class)->only(['index', 'show']);
+        Route::get('drivers/{driver}/photo', [DriverController::class, 'photo']);
 
         Route::get('trips/summary', [TripController::class, 'summary']);
         Route::get('trips/availability', [TripController::class, 'availability']);
@@ -105,6 +106,8 @@ Route::prefix('v1')->group(function () {
                 Route::delete('vehicles/{vehicle}/photos/{photo}', [VehiclePhotoController::class, 'destroy']);
             });
             Route::apiResource('drivers', DriverController::class)->only(['store', 'update', 'destroy']);
+            Route::post('drivers/{driver}/photo', [DriverController::class, 'storePhoto']);
+            Route::delete('drivers/{driver}/photo', [DriverController::class, 'destroyPhoto']);
             Route::post('gps/locations', [GpsController::class, 'store']);
         });
     });

@@ -27,7 +27,19 @@ class DriverRequest extends FormRequest
             'date_hired' => ['nullable', 'date', 'before_or_equal:today'],
             'status' => ['sometimes', Rule::enum(DriverStatus::class)],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'date_of_birth' => ['nullable', 'date', 'before_or_equal:'.now()->subYears(18)->toDateString()],
+            'license_restrictions' => ['nullable', 'string', 'max:100'],
+            'emergency_contact_name' => ['nullable', 'string', 'max:255'],
+            'emergency_contact_phone' => ['nullable', 'required_with:emergency_contact_name', 'string', 'max:30'],
+            'emergency_contact_relation' => ['nullable', 'string', 'max:50'],
+            // The vehicle this driver regularly drives (stored on vehicles.assigned_driver_id).
+            'assigned_vehicle_id' => ['nullable', 'integer', Rule::exists('vehicles', 'id')->whereNull('deleted_at')],
         ];
+    }
+
+    public function messages(): array
+    {
+        return ['date_of_birth.before_or_equal' => 'Drivers must be at least 18 years old.'];
     }
 
     private function required(): string
