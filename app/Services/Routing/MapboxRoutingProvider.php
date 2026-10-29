@@ -275,6 +275,42 @@ class MapboxRoutingProvider implements RoutingProvider
         return $response->successful() ? 'data:image/png;base64,'.base64_encode($response->body()) : null;
     }
 
+    public function fleetImage(array $markers, string $style = 'streets', bool $traffic = false): ?string
+    {
+        $styleId = match (true) {
+            $style === 'satellite' => 'satellite-streets-v12',
+            $traffic => 'navigation-day-v1', // includes live traffic
+            default => 'streets-v12',
+        };
+        $pins = collect($markers)->map(fn ($m) => sprintf('pin-l-%s+%s(%F,%F)', strtolower($m['label']), ltrim($m['color'], '#'), $m['lng'], $m['lat']))->implode(',');
+        // Without positions, show the service area (default proximity) instead of failing.
+        [$lng, $lat] = array_map('floatval', explode(',', (string) config('services.mapbox.proximity', '121.0,14.6')));
+        $path = $pins !== ''
+            ? (count($markers) === 1 ? sprintf('%s/%F,%F,12', $pins, $markers[0]['lng'], $markers[0]['lat']) : "{$pins}/auto")
+            : sprintf('%F,%F,8.5', $lng, $lat);
+
+        $response = $this->http(throw: false)->get("styles/v1/mapbox/{$styleId}/static/{$path}/900x560@2x", count($markers) > 1 ? ['padding' => '60,60,60,200'] : []);
+
+        return $response->successful() ? 'data:image/png;base64,'.base64_encode($response->body()) : null;
+    }
+
+    public function placeName(float $lat, float $lng): ?string
+    {
+        // ~100 m grid so nearby reports share one lookup.
+        $key = sprintf('mapbox:reverse:%.3f,%.3f', $lat, $lng);
+
+        return Cache::remember($key, now()->addDays(7), function () use ($lat, $lng) {
+            $feature = $this->http(throw: false)->get('search/geocode/v6/reverse', ['longitude' => $lng, 'latitude' => $lat, 'limit' => 1])->json('features.0');
+            $props = $feature['properties'] ?? null;
+            if (! $props) {
+                return null;
+            }
+            $context = $props['context'] ?? [];
+
+            return collect([$props['name'] ?? null, $context['place']['name'] ?? null, $context['region']['name'] ?? null])->filter()->unique()->implode(', ') ?: null;
+        });
+    }
+
     public function trackImage(array $points): ?string
     {
         if (! $points) {

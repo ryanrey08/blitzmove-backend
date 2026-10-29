@@ -28,6 +28,16 @@ class NullRoutingProvider implements RoutingProvider
         return null;
     }
 
+    public function fleetImage(array $markers, string $style = 'streets', bool $traffic = false): ?string
+    {
+        return null;
+    }
+
+    public function placeName(float $lat, float $lng): ?string
+    {
+        return null;
+    }
+
     public function routes(array $routes, bool $traffic = false): array
     {
         return $this->optimize(new Trip);

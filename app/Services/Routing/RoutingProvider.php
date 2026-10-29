@@ -46,4 +46,15 @@ interface RoutingProvider
      * @return array{routes: array<array-key, array<string, mixed>>, image: string|null}
      */
     public function routes(array $routes, bool $traffic = false): array;
+
+    /**
+     * Map of vehicle positions. `$style` is "streets" or "satellite"; `$traffic` adds the traffic layer (streets only).
+     * Returns null when no map provider is configured.
+     *
+     * @param  list<array{lat: float, lng: float, label: string, color: string}>  $markers
+     */
+    public function fleetImage(array $markers, string $style = 'streets', bool $traffic = false): ?string;
+
+    /** Short place name for a coordinate (e.g. "SLEX, Calamba, Laguna"), or null. */
+    public function placeName(float $lat, float $lng): ?string;
 }
