@@ -44,7 +44,7 @@ class TripStopController extends Controller
         if ($to = $request->query('to')) {
             $query->whereRaw("{$when} <= ?", [$bound($to, true)->toDateTimeString()]);
         }
-        $this->applyFilters($query, $request, ['status' => 'trip_stops.status', 'type' => 'trip_stops.type', 'trip_status' => 'trips.status', 'trip_id' => 'trip_stops.trip_id']);
+        $this->applyFilters($query, $request, ['type' => 'trip_stops.type', 'trip_status' => 'trips.status', 'trip_id' => 'trip_stops.trip_id']);
 
         if ($term = trim((string) $request->query('search'))) {
             $query->where(fn ($q) => $q
@@ -55,11 +55,17 @@ class TripStopController extends Controller
                 ->orWhereHas('trip.driver', fn ($d) => $d->where('full_name', 'like', "%{$term}%")));
         }
 
+        // Stop-status counts for the same window and filters, before the status filter itself.
+        $counts = (clone $query)->reorder()->select('trip_stops.status')->selectRaw('count(*) as aggregate')->toBase()
+            ->groupBy('trip_stops.status')->pluck('aggregate', 'status')->map(fn ($n) => (int) $n);
+        $this->applyFilters($query, $request, ['status' => 'trip_stops.status']);
+
         $direction = $request->query('sort') === '-eta' ? 'desc' : 'asc';
         $query->orderByRaw("COALESCE(trip_stops.estimated_arrival_at, trips.departure_at) {$direction}")
             ->orderBy('trip_stops.trip_id')->orderBy('trip_stops.sequence');
 
-        return TripStopResource::collection($query->paginate($this->perPage($request, 15))->withQueryString());
+        return TripStopResource::collection($query->paginate($this->perPage($request, 15))->withQueryString())
+            ->additional(['counts' => $counts]);
     }
 
     public function index(Trip $trip): AnonymousResourceCollection

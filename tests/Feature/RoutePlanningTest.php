@@ -57,6 +57,7 @@ class RoutePlanningTest extends TestCase
         $needs = $this->tripWithStops(2);
 
         $this->getJson($this->api('trips?route=unoptimized'))->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $needs->id);
+        $this->getJson($this->api('trips?max_stops=3'))->assertJsonCount(2, 'data');
     }
 
     public function test_vehicle_track_returns_positions_and_a_map_when_configured(): void

@@ -30,7 +30,7 @@ class TripController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Trip::query()->with(['order', 'vehicle', 'driver', 'coDriver'])->withCount('stops');
+        $query = Trip::query()->with(['order', 'vehicle', 'driver', 'coDriver', 'dispatcher'])->withCount('stops');
 
         $this->applySearch($query, $request, ['trip_number', 'reference_no', 'origin', 'destination', 'order.order_number', 'driver.full_name', 'vehicle.plate_number']);
         $this->applyFilters($query, $request, ['status', 'trip_type', 'priority', 'vehicle_id', 'driver_id', 'order_id']);
@@ -43,6 +43,9 @@ class TripController extends Controller
             $query->whereNotNull('route_optimized_at');
         } elseif ($request->query('route') === 'unoptimized') {
             $query->whereNull('route_optimized_at')->has('stops', '>=', 4);
+        }
+        if ($maxStops = $request->integer('max_stops')) {
+            $query->has('stops', '<=', $maxStops);
         }
         if ($from = $request->query('from')) {
             $query->where('departure_at', '>=', $from);
@@ -58,7 +61,7 @@ class TripController extends Controller
 
     public function summary(DashboardService $dashboard): JsonResponse
     {
-        return response()->json(['data' => $dashboard->distribution(Trip::query(), TripStatus::class)]);
+        return response()->json(['data' => $dashboard->distributionWithTrend(Trip::query(), TripStatus::class)]);
     }
 
     public function availability(AvailabilityRequest $request): JsonResponse

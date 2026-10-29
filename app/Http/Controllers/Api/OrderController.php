@@ -62,18 +62,8 @@ class OrderController extends Controller
     /** Status counts, each with how many of those orders were booked this month and last month. */
     public function summary(DashboardService $dashboard): JsonResponse
     {
-        $month = now()->startOfMonth();
-        $bookedIn = fn ($start, $end) => Order::query()->whereBetween('created_at', [$start, $end])
-            ->toBase()->selectRaw('status, count(*) as aggregate')->groupBy('status')->pluck('aggregate', 'status');
-        $thisMonth = $bookedIn($month, now());
-        $lastMonth = $bookedIn($month->copy()->subMonth(), $month->copy()->subSecond());
-
         return response()->json([
-            'data' => array_map(fn ($row) => [
-                ...$row,
-                'this_month' => (int) ($thisMonth[$row['status']] ?? 0),
-                'last_month' => (int) ($lastMonth[$row['status']] ?? 0),
-            ], $dashboard->distribution(Order::query(), OrderStatus::class)),
+            'data' => $dashboard->distributionWithTrend(Order::query(), OrderStatus::class),
             'meta' => ['delayed' => Order::query()->delayed()->count()],
         ]);
     }

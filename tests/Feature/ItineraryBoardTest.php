@@ -54,7 +54,8 @@ class ItineraryBoardTest extends TestCase
         $active->stops()->first()->update(['status' => 'completed']);
         $this->tripWithStops([], ['Manila Port', 'Lipa Yard']);
 
-        $this->getJson($this->api('stops?status=completed'))->assertJsonCount(1, 'data')->assertJsonPath('data.0.location_name', 'Taguig Hub');
+        $this->getJson($this->api('stops?status=completed'))->assertJsonCount(1, 'data')->assertJsonPath('data.0.location_name', 'Taguig Hub')
+            ->assertJsonPath('counts.completed', 1)->assertJsonPath('counts.pending', 3);
         $this->getJson($this->api('stops?trip_status=in_progress'))->assertJsonCount(2, 'data');
         $this->getJson($this->api('stops?search=Lipa'))->assertJsonCount(1, 'data');
         $this->getJson($this->api('stops?search='.$active->trip_number))->assertJsonCount(2, 'data');

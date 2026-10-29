@@ -60,6 +60,25 @@ class DashboardService
      * @param  class-string<BackedEnum>  $enum
      * @return list<array{status: string, label: string, count: int}>
      */
+    /**
+     * Status counts, each with how many of those records were created this
+     * calendar month and last month (for "vs. last month" trends).
+     */
+    public function distributionWithTrend(Builder $query, string $enum): array
+    {
+        $month = now()->startOfMonth();
+        $createdIn = fn ($start, $end) => (clone $query)->whereBetween('created_at', [$start, $end])
+            ->toBase()->selectRaw('status, count(*) as aggregate')->groupBy('status')->pluck('aggregate', 'status');
+        $thisMonth = $createdIn($month, now());
+        $lastMonth = $createdIn($month->copy()->subMonth(), $month->copy()->subSecond());
+
+        return array_map(fn ($row) => [
+            ...$row,
+            'this_month' => (int) ($thisMonth[$row['status']] ?? 0),
+            'last_month' => (int) ($lastMonth[$row['status']] ?? 0),
+        ], $this->distribution(clone $query, $enum));
+    }
+
     public function distribution(Builder $query, string $enum): array
     {
         $counts = $query->toBase()->selectRaw('status, count(*) as aggregate')->groupBy('status')->pluck('aggregate', 'status');
