@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\TripController;
 use App\Http\Controllers\Api\TripStopController;
 use App\Http\Controllers\Api\VehicleController;
+use App\Http\Controllers\Api\VehiclePhotoController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -43,6 +44,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('vehicles/summary', [VehicleController::class, 'summary']);
         Route::apiResource('vehicles', VehicleController::class)->only(['index', 'show']);
+        Route::get('vehicles/{vehicle}/photos/{photo}', [VehiclePhotoController::class, 'show'])->scopeBindings();
 
         Route::get('drivers/summary', [DriverController::class, 'summary']);
         Route::apiResource('drivers', DriverController::class)->only(['index', 'show']);
@@ -97,6 +99,11 @@ Route::prefix('v1')->group(function () {
         // Fleet master data: admin, manager
         Route::middleware('can:manage-fleet')->group(function () {
             Route::apiResource('vehicles', VehicleController::class)->only(['store', 'update', 'destroy']);
+            Route::scopeBindings()->group(function () {
+                Route::post('vehicles/{vehicle}/photos', [VehiclePhotoController::class, 'store']);
+                Route::patch('vehicles/{vehicle}/photos/{photo}/cover', [VehiclePhotoController::class, 'cover']);
+                Route::delete('vehicles/{vehicle}/photos/{photo}', [VehiclePhotoController::class, 'destroy']);
+            });
             Route::apiResource('drivers', DriverController::class)->only(['store', 'update', 'destroy']);
             Route::post('gps/locations', [GpsController::class, 'store']);
         });
