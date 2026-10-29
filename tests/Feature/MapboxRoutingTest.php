@@ -17,9 +17,13 @@ class MapboxRoutingTest extends TestCase
         parent::setUp();
         config(['services.routing.provider' => 'mapbox', 'services.mapbox.token' => 'sk.test']);
 
-        $places = ['Depot' => [121.0, 14.6], 'Lipa' => [121.16, 13.94], 'Calamba' => [121.16, 14.21], 'Batangas' => [121.06, 13.76]];
+        $places = ['Depot' => [121.0, 14.6], 'Lipa' => [121.16, 13.94], 'Calamba' => [121.16, 14.21], 'Batangas' => [121.06, 13.76], 'Taguig City' => [121.05, 14.52]];
         Http::fake([
             'api.mapbox.com/search/geocode/*' => function ($request) use ($places) {
+                // A street-level query that Mapbox matches to the wrong city.
+                if ($request['q'] === 'Bldg 3 FTI Complex, Taguig City') {
+                    return Http::response(['features' => [['geometry' => ['coordinates' => [120.98, 14.6]], 'properties' => ['full_address' => 'Barangay 3, Manila, Philippines']]]]);
+                }
                 $coordinates = $places[$request['q']] ?? null;
 
                 return Http::response(['features' => $coordinates ? [['geometry' => ['coordinates' => $coordinates], 'properties' => ['full_address' => $request['q'].', Philippines']]] : []]);
@@ -94,5 +98,15 @@ class MapboxRoutingTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.stop_ids', [$first->id, $calamba->id, $lipa->id, $last->id])
             ->assertJsonPath('data.distance_km', 93.6);
+    }
+
+    public function test_a_match_outside_the_address_city_falls_back_to_the_city(): void
+    {
+        $this->actingAsRole(UserRole::Viewer);
+
+        $this->postJson($this->api('routing/preview'), ['stops' => [['label' => 'Origin', 'query' => 'Bldg 3 FTI Complex, Taguig City'], ['label' => 'Lipa']]])
+            ->assertOk()
+            ->assertJsonPath('data.points.0.matched', 'Taguig City, Philippines')
+            ->assertJsonPath('data.points.0.lat', 14.52);
     }
 }

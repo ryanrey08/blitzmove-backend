@@ -114,13 +114,29 @@ class MapboxRoutingProvider implements RoutingProvider
 
         $proximity = config('services.mapbox.proximity');
 
-        return Cache::remember('mapbox:geocode:'.md5($country.'|'.$proximity.'|'.mb_strtolower($query)), now()->addDays(30), function () use ($query, $country, $proximity) {
-            $feature = $this->http()->get('search/geocode/v6/forward', array_filter([
-                'q' => $query,
+        return Cache::remember('mapbox:geocode:v2:'.md5($country.'|'.$proximity.'|'.mb_strtolower($query)), now()->addDays(30), function () use ($query, $country, $proximity) {
+            $lookup = fn (string $q) => $this->http()->get('search/geocode/v6/forward', array_filter([
+                'q' => $q,
                 'limit' => 1,
                 'country' => $country,
                 'proximity' => $proximity,
             ]))->json('features.0');
+
+            $feature = $lookup($query);
+
+            // Street-level matches are often wrong for PH addresses (e.g. "Bldg 3 FTI Complex, Taguig City" -> "Barangay 3, Manila").
+            // When the match isn't in the address's own city, fall back to the city/province part.
+            $parts = array_values(array_filter(array_map('trim', explode(',', $query))));
+            if (count($parts) >= 2) {
+                $city = end($parts);
+                $matched = (string) ($feature['properties']['full_address'] ?? '');
+                $cityName = trim(preg_replace('/\b(city|province)\b/i', '', $city));
+                if (! $feature || ($cityName !== '' && stripos($matched, $cityName) === false)) {
+                    // Drop street parts (those with numbers): "Bldg 3 FTI Complex, Taguig City" -> "Taguig City".
+                    $place = array_slice(array_values(array_filter($parts, fn ($part) => ! preg_match('/\d/', $part))), -2);
+                    $feature = ($place ? $lookup(implode(', ', $place)) : null) ?? $feature;
+                }
+            }
 
             return $feature ? ['coordinates' => $feature['geometry']['coordinates'], 'address' => $feature['properties']['full_address'] ?? null] : null;
         });
