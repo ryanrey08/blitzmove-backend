@@ -113,7 +113,7 @@ class TripController extends Controller
     public function updateStatus(UpdateTripStatusRequest $request, Trip $trip): TripResource
     {
         $status = TripStatus::from($request->input('status'));
-        $this->trips->changeStatus($trip, $status, $request->user(), $request->input('notes'));
+        $this->trips->changeStatus($trip, $status, $request->user(), $request->input('notes'), $request->only(['dispatched_at', 'vehicle_id', 'driver_id']));
 
         return TripResource::make($this->detailed($trip))->additional(['message' => "Trip {$trip->trip_number} is now {$status->label()}."]);
     }
@@ -121,7 +121,7 @@ class TripController extends Controller
     private function detailed(Trip $trip): Trip
     {
         return $trip->refresh()->load([
-            'order', 'vehicle', 'driver', 'coDriver', 'dispatcher', 'stops.order',
+            'order', 'vehicle', 'driver', 'coDriver', 'creator', 'dispatcher', 'stops.order',
             'assignments.vehicle', 'assignments.driver', 'assignments.assigner',
         ]);
     }

@@ -197,7 +197,34 @@ class TripService
         });
     }
 
-    public function dispatch(Trip $trip, User $user, ?string $notes = null): Trip
+    /**
+     * Release a scheduled trip to its driver. The trip row is locked so two
+     * dispatchers can't release it twice; an optional vehicle/driver change is
+     * applied in the same transaction.
+     *
+     * @param  array{dispatched_at?: string|null, vehicle_id?: int|string|null, driver_id?: int|string|null}  $options
+     */
+    public function dispatch(Trip $trip, User $user, ?string $notes = null, array $options = []): Trip
+    {
+        return DB::transaction(function () use ($trip, $user, $notes, $options) {
+            $trip->setRawAttributes(Trip::lockForUpdate()->findOrFail($trip->id)->getAttributes(), true);
+
+            if ($trip->status === TripStatus::Dispatched) {
+                throw BusinessRuleException::withField('status', "Trip {$trip->trip_number} has already been dispatched.");
+            }
+
+            $vehicleId = (int) ($options['vehicle_id'] ?? 0);
+            $driverId = (int) ($options['driver_id'] ?? 0);
+            if ($vehicleId && $driverId && ($vehicleId !== $trip->vehicle_id || $driverId !== $trip->driver_id)) {
+                $this->reassign($trip, $vehicleId, $driverId, $user, 'Changed at dispatch');
+                $trip->unsetRelation('vehicle')->unsetRelation('driver');
+            }
+
+            return $this->release($trip, $user, $notes, isset($options['dispatched_at']) ? Carbon::parse($options['dispatched_at']) : now());
+        });
+    }
+
+    private function release(Trip $trip, User $user, ?string $notes, CarbonInterface $at): Trip
     {
         $this->assertTransition($trip, TripStatus::Dispatched);
 
@@ -219,7 +246,7 @@ class TripService
 
         $trip->update([
             'status' => TripStatus::Dispatched,
-            'dispatched_at' => now(),
+            'dispatched_at' => $at,
             'dispatched_by' => $user->id,
             'dispatch_notes' => $notes,
         ]);
@@ -227,10 +254,10 @@ class TripService
         return $trip;
     }
 
-    public function changeStatus(Trip $trip, TripStatus $next, User $user, ?string $notes = null): Trip
+    public function changeStatus(Trip $trip, TripStatus $next, User $user, ?string $notes = null, array $options = []): Trip
     {
         return match ($next) {
-            TripStatus::Dispatched => $this->dispatch($trip, $user, $notes),
+            TripStatus::Dispatched => $this->dispatch($trip, $user, $notes, $options),
             TripStatus::InProgress => $this->start($trip),
             TripStatus::Completed => $this->complete($trip),
             TripStatus::Cancelled => $this->cancel($trip, $notes),

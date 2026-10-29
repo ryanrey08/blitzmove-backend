@@ -38,6 +38,7 @@ class TripResource extends JsonResource
             'dispatched_by' => UserResource::make($this->whenLoaded('dispatcher')),
             'dispatch_notes' => $this->dispatch_notes,
             'notes' => $this->notes,
+            'created_by' => UserResource::make($this->whenLoaded('creator')),
             'stops_count' => $this->whenCounted('stops'),
             'stops' => TripStopResource::collection($this->whenLoaded('stops')),
             'assignments' => DispatchAssignmentResource::collection($this->whenLoaded('assignments')),

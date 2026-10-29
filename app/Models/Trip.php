@@ -60,6 +60,11 @@ class Trip extends Model
         return $this->belongsTo(Driver::class, 'co_driver_id')->withTrashed();
     }
 
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
     public function dispatcher(): BelongsTo
     {
         return $this->belongsTo(User::class, 'dispatched_by');
