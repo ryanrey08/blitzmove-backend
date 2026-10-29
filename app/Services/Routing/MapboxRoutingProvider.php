@@ -196,6 +196,46 @@ class MapboxRoutingProvider implements RoutingProvider
         return $response->successful() ? 'data:image/png;base64,'.base64_encode($response->body()) : null;
     }
 
+    public function trackImage(array $points): ?string
+    {
+        if (! $points) {
+            return null;
+        }
+
+        $last = end($points);
+        $overlay = sprintf('pin-l-car+e30613(%F,%F)', $last['lng'], $last['lat']);
+        if (count($points) > 1) {
+            $start = $points[0];
+            $overlay = sprintf('path-4+0284c7-0.8(%s),pin-s+16a34a(%F,%F),', rawurlencode($this->encodePolyline($points)), $start['lng'], $start['lat']).$overlay;
+        }
+
+        $position = count($points) > 1 ? 'auto' : sprintf('%F,%F,13', $last['lng'], $last['lat']);
+        $response = $this->http(throw: false)->get("styles/v1/mapbox/streets-v12/static/{$overlay}/{$position}/640x420@2x", count($points) > 1 ? ['padding' => 50] : []);
+
+        return $response->successful() ? 'data:image/png;base64,'.base64_encode($response->body()) : null;
+    }
+
+    /** Google/Mapbox encoded polyline (precision 5). */
+    private function encodePolyline(array $points): string
+    {
+        $encoded = '';
+        $previous = [0, 0];
+        foreach ($points as $point) {
+            foreach ([[(int) round($point['lat'] * 1e5), 0], [(int) round($point['lng'] * 1e5), 1]] as [$value, $axis]) {
+                $delta = $value - $previous[$axis];
+                $previous[$axis] = $value;
+                $delta = $delta < 0 ? ~($delta << 1) : $delta << 1;
+                while ($delta >= 0x20) {
+                    $encoded .= chr((0x20 | ($delta & 0x1F)) + 63);
+                    $delta >>= 5;
+                }
+                $encoded .= chr($delta + 63);
+            }
+        }
+
+        return $encoded;
+    }
+
     private function coordinates(array $points): string
     {
         return collect($points)->map(fn ($p) => sprintf('%F,%F', $p['lng'], $p['lat']))->implode(';');

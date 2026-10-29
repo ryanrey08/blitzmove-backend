@@ -29,4 +29,11 @@ interface RoutingProvider
      * @return array{points: list<array<string, mixed>>, order: list<int>, distance_km: float|null, duration_minutes: int|null, legs: list<array<string, mixed>>, image: string|null, unresolved: list<string>}
      */
     public function preview(array $stops, bool $optimize = false, bool $legendInset = false): array;
+
+    /**
+     * Map image of reported GPS positions, oldest first, or null when no map provider is configured.
+     *
+     * @param  list<array{lat: float, lng: float}>  $points
+     */
+    public function trackImage(array $points): ?string;
 }

@@ -90,7 +90,7 @@ class TripStopController extends Controller
 
     public function reorder(ReorderTripStopsRequest $request, Trip $trip): AnonymousResourceCollection
     {
-        $this->itinerary->reorder($trip, $request->input('stop_ids', []));
+        $this->itinerary->reorder($trip, $request->input('stop_ids', []), $request->boolean('optimized'), $request->input('distance_km'));
 
         return TripStopResource::collection($trip->stops()->with('order')->get())->additional(['message' => 'Stop order saved.']);
     }

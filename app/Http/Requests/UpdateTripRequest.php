@@ -30,6 +30,8 @@ class UpdateTripRequest extends FormRequest
             'estimated_arrival_at' => ['sometimes', 'date'],
             'distance_km' => ['nullable', 'numeric', 'min:0', 'max:100000'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            // The submitted stop order came from route optimization.
+            'route_optimized' => ['sometimes', 'boolean'],
             // When present, replaces the stops between origin and destination.
             'stops' => ['sometimes', 'array', 'max:50'],
             'stops.*.location_name' => ['required', 'string', 'max:255'],

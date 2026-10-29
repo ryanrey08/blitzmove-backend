@@ -32,6 +32,8 @@ class ItineraryService
 
             $trip->stops()->where('sequence', '>=', $position)->increment('sequence');
 
+            $this->clearOptimization($trip);
+
             return $trip->stops()->create([
                 ...collect($data)->only(['location_name', 'address', 'order_id', 'estimated_arrival_at', 'notes'])->all(),
                 'type' => StopType::Stop,
@@ -71,11 +73,15 @@ class ItineraryService
             $sequence = $stop->sequence;
             $stop->delete();
             $trip->stops()->where('sequence', '>', $sequence)->decrement('sequence');
+            $this->clearOptimization($trip);
         });
     }
 
-    /** @param list<int> $stopIds intermediate stops in their new order */
-    public function reorder(Trip $trip, array $stopIds): Trip
+    /**
+     * @param  list<int>  $stopIds  intermediate stops in their new order
+     * @param  bool  $optimized  the order came from the routing provider (marks the route as optimized)
+     */
+    public function reorder(Trip $trip, array $stopIds, bool $optimized = false, ?float $distanceKm = null): Trip
     {
         $this->assertEditable($trip);
 
@@ -86,14 +92,24 @@ class ItineraryService
             throw BusinessRuleException::withField('stop_ids', 'Provide every intermediate stop of this trip exactly once.');
         }
 
-        DB::transaction(function () use ($trip, $given) {
+        DB::transaction(function () use ($trip, $given, $optimized, $distanceKm) {
             foreach ($given->values() as $index => $id) {
                 $trip->stops()->whereKey($id)->update(['sequence' => $index + 2]);
             }
             $trip->stops()->where('type', StopType::Dropoff)->update(['sequence' => $given->count() + 2]);
+            $changes = ['route_optimized_at' => $optimized ? now() : null];
+            if ($optimized && $distanceKm !== null) {
+                $changes['distance_km'] = $distanceKm;
+            }
+            $trip->update($changes);
         });
 
         return $trip;
+    }
+
+    private function clearOptimization(Trip $trip): void
+    {
+        $trip->route_optimized_at && $trip->update(['route_optimized_at' => null]);
     }
 
     private function assertEditable(Trip $trip): void

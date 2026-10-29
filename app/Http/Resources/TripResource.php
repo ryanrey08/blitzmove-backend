@@ -32,6 +32,7 @@ class TripResource extends JsonResource
             'actual_departure_at' => $this->actual_departure_at?->toIso8601String(),
             'actual_arrival_at' => $this->actual_arrival_at?->toIso8601String(),
             'distance_km' => $this->distance_km !== null ? (float) $this->distance_km : null,
+            'route_optimized_at' => $this->route_optimized_at?->toIso8601String(),
             'status' => $this->status?->value,
             'allowed_transitions' => array_map(fn ($s) => $s->value, $this->status?->allowedTransitions() ?? []),
             'dispatched_at' => $this->dispatched_at?->toIso8601String(),

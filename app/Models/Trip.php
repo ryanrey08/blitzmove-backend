@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'trip_number', 'reference_no', 'trip_type', 'priority', 'order_id', 'vehicle_id', 'driver_id', 'co_driver_id', 'origin', 'destination', 'departure_at',
-    'estimated_arrival_at', 'actual_departure_at', 'actual_arrival_at', 'distance_km', 'status',
+    'estimated_arrival_at', 'actual_departure_at', 'actual_arrival_at', 'distance_km', 'route_optimized_at', 'status',
     'dispatched_at', 'dispatched_by', 'dispatch_notes', 'notes', 'created_by',
 ])]
 class Trip extends Model
@@ -33,6 +33,7 @@ class Trip extends Model
             'actual_departure_at' => 'datetime',
             'actual_arrival_at' => 'datetime',
             'dispatched_at' => 'datetime',
+            'route_optimized_at' => 'datetime',
             'distance_km' => 'decimal:2',
             'status' => TripStatus::class,
             'trip_type' => TripType::class,

@@ -57,6 +57,7 @@ class TripService
                 'departure_at' => $start,
                 'estimated_arrival_at' => $end,
                 'distance_km' => $data['distance_km'] ?? null,
+                'route_optimized_at' => ! empty($data['route_optimized']) ? now() : null,
                 'notes' => $data['notes'] ?? null,
                 'status' => TripStatus::Scheduled,
                 'created_by' => $user->id,
@@ -135,6 +136,7 @@ class TripService
             if (array_key_exists('stops', $data)) {
                 $trip->stops()->delete();
                 $this->createStops($trip, $data['stops'] ?? [], $trip->order);
+                $trip->update(['route_optimized_at' => ! empty($data['route_optimized']) ? now() : null]);
             } else {
                 $stops = $trip->stops()->get();
                 $stops->first()?->update(['location_name' => $trip->origin, 'estimated_arrival_at' => $start]);

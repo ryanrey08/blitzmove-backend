@@ -31,6 +31,8 @@ class StoreTripRequest extends FormRequest
             'estimated_arrival_at' => ['required', 'date', 'after:departure_at'],
             'distance_km' => ['nullable', 'numeric', 'min:0', 'max:100000'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            // The submitted stop order came from route optimization.
+            'route_optimized' => ['sometimes', 'boolean'],
             'stops' => ['sometimes', 'array', 'max:50'],
             'stops.*.location_name' => ['required', 'string', 'max:255'],
             'stops.*.activity' => ['nullable', Rule::enum(StopActivity::class)],

@@ -16,6 +16,9 @@ class ReorderTripStopsRequest extends FormRequest
         return [
             'stop_ids' => ['present', 'array'],
             'stop_ids.*' => ['integer', 'distinct'],
+            // True when the order came from the routing provider's optimization.
+            'optimized' => ['sometimes', 'boolean'],
+            'distance_km' => ['nullable', 'numeric', 'min:0', 'max:100000'],
         ];
     }
 }

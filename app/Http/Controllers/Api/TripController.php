@@ -38,6 +38,12 @@ class TripController extends Controller
         if ($request->query('scope') === 'dispatch') {
             $query->whereIn('status', [TripStatus::Scheduled, TripStatus::Dispatched, TripStatus::InProgress]);
         }
+        // Route planning: optimized trips, or trips with two or more stops between origin and destination still in manual order.
+        if ($request->query('route') === 'optimized') {
+            $query->whereNotNull('route_optimized_at');
+        } elseif ($request->query('route') === 'unoptimized') {
+            $query->whereNull('route_optimized_at')->has('stops', '>=', 4);
+        }
         if ($from = $request->query('from')) {
             $query->where('departure_at', '>=', $from);
         }

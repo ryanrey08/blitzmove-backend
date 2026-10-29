@@ -65,6 +65,7 @@ Route::prefix('v1')->group(function () {
         Route::post('routing/preview', [RoutingController::class, 'preview'])->middleware('throttle:60,1');
         Route::get('gps/vehicles', [GpsController::class, 'index']);
         Route::get('gps/vehicles/{vehicle}/history', [GpsController::class, 'history']);
+        Route::get('gps/vehicles/{vehicle}/track', [GpsController::class, 'track']);
 
         // Day-to-day operations: admin, manager, dispatcher
         Route::middleware('can:manage-operations')->group(function () {

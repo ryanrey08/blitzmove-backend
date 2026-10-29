@@ -23,6 +23,11 @@ class NullRoutingProvider implements RoutingProvider
         return $this->optimize(new Trip);
     }
 
+    public function trackImage(array $points): ?string
+    {
+        return null;
+    }
+
     public function optimize(Trip $trip): array
     {
         throw new BusinessRuleException(
