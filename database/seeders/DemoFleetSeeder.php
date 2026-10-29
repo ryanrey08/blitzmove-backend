@@ -63,6 +63,14 @@ class DemoFleetSeeder extends Seeder
         ['Beverage cases', 200, 5200],
     ];
 
+    private const PAYMENT_TERMS = ['Net 30', 'Net 15', 'COD', 'Net 7'];
+
+    /** Demo freight charge: a base fee plus a per-kg rate, rounded to the nearest 100. */
+    private static function freight(int $weightKg): float
+    {
+        return round(2500 + $weightKg * 3.2, -2);
+    }
+
     public function run(): void
     {
         if (Vehicle::withTrashed()->exists() || Order::withTrashed()->exists()) {
@@ -217,6 +225,8 @@ class DemoFleetSeeder extends Seeder
                 'cargo_description' => $cargo,
                 'quantity' => $qty,
                 'weight_kg' => $weight,
+                'amount' => self::freight($weight),
+                'payment_terms' => self::PAYMENT_TERMS[$slot % count(self::PAYMENT_TERMS)],
                 'delivery_instructions' => 'Call receiving dock 30 minutes before arrival.',
                 'status' => $orderStatus,
                 'delivered_at' => $orderStatus === OrderStatus::Delivered ? $arrival : null,
@@ -279,6 +289,8 @@ class DemoFleetSeeder extends Seeder
                 'cargo_description' => $cargo,
                 'quantity' => $qty,
                 'weight_kg' => $weight,
+                'amount' => self::freight($weight),
+                'payment_terms' => self::PAYMENT_TERMS[$i % count(self::PAYMENT_TERMS)],
                 'status' => $cancelled ? OrderStatus::Cancelled : OrderStatus::Pending,
                 'cancelled_at' => $cancelled ? now()->subHours($i) : null,
                 'cancellation_reason' => $cancelled ? 'Customer rescheduled shipment' : null,

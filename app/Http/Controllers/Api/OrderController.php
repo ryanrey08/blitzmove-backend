@@ -37,15 +37,60 @@ class OrderController extends Controller
         if ($request->boolean('schedulable')) {
             $query->whereIn('status', [OrderStatus::Pending, OrderStatus::Scheduled]);
         }
+        if ($request->boolean('delayed')) {
+            $query->delayed();
+        }
+        if ($customer = $request->query('customer')) {
+            $query->where('customer_name', $customer);
+        }
+        if ($destination = trim((string) $request->query('destination'))) {
+            $query->where('delivery_address', 'like', '%'.$destination);
+        }
+        // Order date = when the order was booked.
+        if ($from = $request->query('created_from')) {
+            $query->where('created_at', '>=', $from);
+        }
+        if ($to = $request->query('created_to')) {
+            $query->where('created_at', '<=', $to.' 23:59:59');
+        }
 
-        $this->applySort($query, $request, ['order_number', 'customer_name', 'scheduled_pickup_at', 'scheduled_delivery_at', 'status', 'created_at']);
+        $this->applySort($query, $request, ['order_number', 'customer_name', 'scheduled_pickup_at', 'scheduled_delivery_at', 'status', 'amount', 'created_at']);
 
         return OrderResource::collection($query->paginate($this->perPage($request))->withQueryString());
     }
 
+    /** Status counts, each with how many of those orders were booked this month and last month. */
     public function summary(DashboardService $dashboard): JsonResponse
     {
-        return response()->json(['data' => $dashboard->distribution(Order::query(), OrderStatus::class)]);
+        $month = now()->startOfMonth();
+        $bookedIn = fn ($start, $end) => Order::query()->whereBetween('created_at', [$start, $end])
+            ->toBase()->selectRaw('status, count(*) as aggregate')->groupBy('status')->pluck('aggregate', 'status');
+        $thisMonth = $bookedIn($month, now());
+        $lastMonth = $bookedIn($month->copy()->subMonth(), $month->copy()->subSecond());
+
+        return response()->json([
+            'data' => array_map(fn ($row) => [
+                ...$row,
+                'this_month' => (int) ($thisMonth[$row['status']] ?? 0),
+                'last_month' => (int) ($lastMonth[$row['status']] ?? 0),
+            ], $dashboard->distribution(Order::query(), OrderStatus::class)),
+            'meta' => ['delayed' => Order::query()->delayed()->count()],
+        ]);
+    }
+
+    /** Values for the Orders filters: customers, and destinations ("City, Province") taken from delivery addresses. */
+    public function filterOptions(): JsonResponse
+    {
+        $destinations = Order::query()->distinct()->pluck('delivery_address')
+            // Last two address parts, skipping street parts (those with numbers): "Lot 12 X Park, Calamba, Laguna" -> "Calamba, Laguna".
+            ->map(fn (string $address) => collect(explode(',', $address))->map(fn ($part) => trim($part))
+                ->filter(fn ($part) => $part !== '' && ! preg_match('/\d/', $part))->slice(-2)->implode(', '))
+            ->filter()->unique()->sort()->values();
+
+        return response()->json(['data' => [
+            'customers' => Order::query()->distinct()->orderBy('customer_name')->pluck('customer_name'),
+            'destinations' => $destinations,
+        ]]);
     }
 
     public function store(OrderRequest $request): JsonResponse

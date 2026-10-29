@@ -38,6 +38,7 @@ Route::prefix('v1')->group(function () {
         Route::get('fleet/monitoring', MonitoringController::class);
 
         Route::get('orders/summary', [OrderController::class, 'summary']);
+        Route::get('orders/filter-options', [OrderController::class, 'filterOptions']);
         Route::apiResource('orders', OrderController::class)->only(['index', 'show']);
 
         Route::get('vehicles/summary', [VehicleController::class, 'summary']);

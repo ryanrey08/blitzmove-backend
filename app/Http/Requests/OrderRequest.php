@@ -23,6 +23,8 @@ class OrderRequest extends FormRequest
             'cargo_description' => [$this->required(), 'string', 'max:255'],
             'quantity' => [$this->required(), 'integer', 'min:1', 'max:1000000'],
             'weight_kg' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'amount' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
+            'payment_terms' => ['nullable', 'string', 'max:50'],
             'delivery_instructions' => ['nullable', 'string', 'max:2000'],
         ];
     }
