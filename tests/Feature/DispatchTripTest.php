@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\TripStatus;
 use App\Enums\UserRole;
 use App\Models\Driver;
 use App\Models\Trip;
@@ -72,5 +73,27 @@ class DispatchTripTest extends TestCase
         $this->patchJson($this->api("trips/{$trip->id}/status"), ['status' => 'dispatched', 'vehicle_id' => $busy->vehicle_id, 'driver_id' => $trip->driver_id])
             ->assertStatus(422)->assertJsonValidationErrors('vehicle_id');
         $this->assertSame('scheduled', $trip->fresh()->status->value);
+    }
+
+    public function test_only_transitions_allowed_by_the_status_are_accepted(): void
+    {
+        $this->actingAsRole(UserRole::Dispatcher);
+
+        foreach ([
+            [TripStatus::InProgress, 'dispatched'],
+            [TripStatus::Completed, 'dispatched'],
+            [TripStatus::Cancelled, 'dispatched'],
+            [TripStatus::Scheduled, 'in_progress'],
+            [TripStatus::Scheduled, 'completed'],
+            [TripStatus::Completed, 'cancelled'],
+        ] as [$from, $to]) {
+            $trip = Trip::factory()->create(['status' => $from]);
+            $this->patchJson($this->api("trips/{$trip->id}/status"), ['status' => $to])
+                ->assertStatus(422)->assertJsonValidationErrors('status');
+            $this->assertSame($from, $trip->fresh()->status, "{$from->value} -> {$to} should be rejected");
+        }
+
+        $trip = Trip::factory()->create(['status' => TripStatus::Dispatched]);
+        $this->getJson($this->api("trips/{$trip->id}"))->assertJsonPath('allowed_transitions', null)->assertJsonPath('data.allowed_transitions', ['in_progress', 'scheduled', 'cancelled']);
     }
 }
