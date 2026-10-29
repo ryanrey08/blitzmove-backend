@@ -18,6 +18,11 @@ class NullRoutingProvider implements RoutingProvider
         return null;
     }
 
+    public function preview(array $stops, bool $optimize = false, bool $legendInset = false): array
+    {
+        return $this->optimize(new Trip);
+    }
+
     public function optimize(Trip $trip): array
     {
         throw new BusinessRuleException(

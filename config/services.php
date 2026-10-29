@@ -44,4 +44,12 @@ return [
         'provider' => env('ROUTING_PROVIDER'),
     ],
 
+    // Secret token: used only server-side (geocoding, directions, optimization, static map images).
+    'mapbox' => [
+        'token' => env('MAPBOX_SECRET_TOKEN'),
+        'country' => env('MAPBOX_COUNTRY', 'ph'),
+        // "lng,lat" that geocoding results are biased towards (default: Metro Manila).
+        'proximity' => env('MAPBOX_PROXIMITY', '121.0,14.6'),
+    ],
+
 ];

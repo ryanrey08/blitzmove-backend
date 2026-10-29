@@ -32,5 +32,9 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Tests never call real map/routing providers; Mapbox tests fake HTTP. -->
+        <env name="MAP_PROVIDER" value=""/>
+        <env name="ROUTING_PROVIDER" value=""/>
+        <env name="MAPBOX_SECRET_TOKEN" value=""/>
     </php>
 </phpunit>

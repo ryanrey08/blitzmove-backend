@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\User;
+use App\Services\Routing\MapboxRoutingProvider;
 use App\Services\Routing\NullRoutingProvider;
 use App\Services\Routing\RoutingProvider;
 use Illuminate\Auth\Notifications\ResetPassword;
@@ -20,8 +21,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Swap in a real provider (Google Routes, Mapbox, OSRM...) here once one is configured.
-        $this->app->bind(RoutingProvider::class, NullRoutingProvider::class);
+        // Mapbox when ROUTING_PROVIDER=mapbox and a token is set; otherwise routing reports "not configured".
+        $this->app->bind(RoutingProvider::class, fn () => config('services.routing.provider') === 'mapbox' && filled(config('services.mapbox.token'))
+            ? $this->app->make(MapboxRoutingProvider::class)
+            : new NullRoutingProvider);
     }
 
     /**

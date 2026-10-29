@@ -60,6 +60,7 @@ Route::prefix('v1')->group(function () {
         Route::get('documents/{ownerType}/{id}/download', [DocumentController::class, 'download'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
 
         Route::get('routing/status', [RoutingController::class, 'status']);
+        Route::post('routing/preview', [RoutingController::class, 'preview'])->middleware('throttle:60,1');
         Route::get('gps/vehicles', [GpsController::class, 'index']);
         Route::get('gps/vehicles/{vehicle}/history', [GpsController::class, 'history']);
 
