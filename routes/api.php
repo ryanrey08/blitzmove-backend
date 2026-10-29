@@ -52,6 +52,7 @@ Route::prefix('v1')->group(function () {
         Route::get('trips/next-number', [TripController::class, 'nextNumber']);
         Route::apiResource('trips', TripController::class)->only(['index', 'show']);
         Route::get('trips/{trip}/stops', [TripStopController::class, 'index']);
+        Route::get('stops', [TripStopController::class, 'board']);
 
         Route::get('fuel-records/summary', [FuelRecordController::class, 'summary']);
         Route::apiResource('fuel-records', FuelRecordController::class)->only(['index', 'show']);

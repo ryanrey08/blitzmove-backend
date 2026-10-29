@@ -21,6 +21,7 @@ class TripStopResource extends JsonResource
             'address' => $this->address,
             'order_id' => $this->order_id,
             'order' => OrderResource::make($this->whenLoaded('order')),
+            'trip' => TripResource::make($this->whenLoaded('trip')),
             'estimated_arrival_at' => $this->estimated_arrival_at?->toIso8601String(),
             'actual_arrival_at' => $this->actual_arrival_at?->toIso8601String(),
             'status' => $this->status?->value,
