@@ -16,6 +16,7 @@ class TripStopResource extends JsonResource
             'trip_id' => $this->trip_id,
             'sequence' => $this->sequence,
             'type' => $this->type?->value,
+            'activity' => $this->activity?->value,
             'location_name' => $this->location_name,
             'address' => $this->address,
             'order_id' => $this->order_id,

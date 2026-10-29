@@ -6,7 +6,9 @@ use App\Enums\DriverStatus;
 use App\Enums\OrderStatus;
 use App\Enums\StopStatus;
 use App\Enums\StopType;
+use App\Enums\TripPriority;
 use App\Enums\TripStatus;
+use App\Enums\TripType;
 use App\Enums\VehicleStatus;
 use App\Exceptions\BusinessRuleException;
 use App\Models\DispatchAssignment;
@@ -38,13 +40,18 @@ class TripService
 
             $vehicle = Vehicle::lockForUpdate()->findOrFail($data['vehicle_id']);
             $driver = Driver::lockForUpdate()->findOrFail($data['driver_id']);
-            $this->assertAvailable($vehicle, $driver, $start, $end);
+            $coDriver = isset($data['co_driver_id']) ? Driver::lockForUpdate()->findOrFail($data['co_driver_id']) : null;
+            $this->assertAvailable($vehicle, $driver, $start, $end, coDriver: $coDriver);
 
             $trip = Trip::create([
                 'trip_number' => $this->numbers->next(Trip::class, 'trip_number', 'TRIP'),
+                'reference_no' => $data['reference_no'] ?? null,
+                'trip_type' => $data['trip_type'] ?? TripType::Delivery,
+                'priority' => $data['priority'] ?? TripPriority::Normal,
                 'order_id' => $order?->id,
                 'vehicle_id' => $vehicle->id,
                 'driver_id' => $driver->id,
+                'co_driver_id' => $coDriver?->id,
                 'origin' => $data['origin'],
                 'destination' => $data['destination'],
                 'departure_at' => $start,
@@ -76,13 +83,13 @@ class TripService
         });
     }
 
-    public function update(Trip $trip, array $data): Trip
+    public function update(Trip $trip, array $data, User $user): Trip
     {
         if ($trip->status !== TripStatus::Scheduled) {
             throw new BusinessRuleException('Only scheduled trips can be edited. Use dispatch actions for trips already released.');
         }
 
-        return DB::transaction(function () use ($trip, $data) {
+        return DB::transaction(function () use ($trip, $data, $user) {
             $start = Carbon::parse($data['departure_at'] ?? $trip->departure_at);
             $end = Carbon::parse($data['estimated_arrival_at'] ?? $trip->estimated_arrival_at);
 
@@ -90,21 +97,70 @@ class TripService
                 throw BusinessRuleException::withField('estimated_arrival_at', 'Estimated arrival must be after departure.');
             }
 
-            $this->assertAvailable($trip->vehicle, $trip->driver, $start, $end, $trip->id);
+            $vehicle = isset($data['vehicle_id']) ? Vehicle::lockForUpdate()->findOrFail($data['vehicle_id']) : $trip->vehicle;
+            $driver = isset($data['driver_id']) ? Driver::lockForUpdate()->findOrFail($data['driver_id']) : $trip->driver;
+            $coDriverId = array_key_exists('co_driver_id', $data) ? $data['co_driver_id'] : $trip->co_driver_id;
+            $coDriver = $coDriverId ? Driver::lockForUpdate()->findOrFail($coDriverId) : null;
+
+            if ($coDriver && $coDriver->id === $driver->id) {
+                throw BusinessRuleException::withField('co_driver_id', 'The co-driver must be different from the driver.');
+            }
+
+            $this->assertAvailable($vehicle, $driver, $start, $end, $trip->id, $coDriver);
+
+            $resourcesChanged = $vehicle->id !== $trip->vehicle_id || $driver->id !== $trip->driver_id;
 
             $trip->update([
-                ...collect($data)->only(['origin', 'destination', 'distance_km', 'notes'])->all(),
+                ...collect($data)->only(['reference_no', 'trip_type', 'priority', 'origin', 'destination', 'distance_km', 'notes'])->all(),
+                'vehicle_id' => $vehicle->id,
+                'driver_id' => $driver->id,
+                'co_driver_id' => $coDriver?->id,
                 'departure_at' => $start,
                 'estimated_arrival_at' => $end,
             ]);
 
-            $stops = $trip->stops()->get();
-            $stops->first()?->update(['location_name' => $trip->origin, 'estimated_arrival_at' => $start]);
-            if ($stops->count() > 1) {
-                $stops->last()->update(['location_name' => $trip->destination, 'estimated_arrival_at' => $end]);
+            if ($resourcesChanged) {
+                $trip->assignments()->whereNull('released_at')->update(['released_at' => now()]);
+                DispatchAssignment::create([
+                    'trip_id' => $trip->id,
+                    'vehicle_id' => $vehicle->id,
+                    'driver_id' => $driver->id,
+                    'assigned_by' => $user->id,
+                    'assigned_at' => now(),
+                    'reason' => 'Changed while editing trip',
+                ]);
+                $trip->order?->update(['vehicle_id' => $vehicle->id, 'driver_id' => $driver->id]);
+            }
+
+            if (array_key_exists('stops', $data)) {
+                $trip->stops()->delete();
+                $this->createStops($trip, $data['stops'] ?? [], $trip->order);
+            } else {
+                $stops = $trip->stops()->get();
+                $stops->first()?->update(['location_name' => $trip->origin, 'estimated_arrival_at' => $start]);
+                if ($stops->count() > 1) {
+                    $stops->last()->update(['location_name' => $trip->destination, 'estimated_arrival_at' => $end]);
+                }
             }
 
             return $trip;
+        });
+    }
+
+    /**
+     * Soft-delete a trip. Trips on the road must be completed first; otherwise
+     * the vehicle/driver booking is released and a scheduled order goes back to pending.
+     */
+    public function delete(Trip $trip): void
+    {
+        if ($trip->status === TripStatus::InProgress) {
+            throw new BusinessRuleException("Trip {$trip->trip_number} is in progress and cannot be deleted. Complete it first.");
+        }
+
+        DB::transaction(function () use ($trip) {
+            $trip->assignments()->whereNull('released_at')->update(['released_at' => now()]);
+            $this->releaseOrder($trip);
+            $trip->delete();
         });
     }
 
@@ -234,27 +290,34 @@ class TripService
             ]);
             $trip->assignments()->whereNull('released_at')->update(['released_at' => now()]);
 
-            $order = $trip->order;
-            if ($order && $order->status === OrderStatus::Scheduled
-                && ! $order->trips()->whereKeyNot($trip->id)->whereIn('status', TripStatus::blocking())->exists()) {
-                $order->update(['status' => OrderStatus::Pending, 'vehicle_id' => null, 'driver_id' => null]);
-            }
+            $this->releaseOrder($trip);
 
             return $trip;
         });
+    }
+
+    /** Return a scheduled order to pending when no other open trip carries it. */
+    private function releaseOrder(Trip $trip): void
+    {
+        $order = $trip->order;
+        if ($order && $order->status === OrderStatus::Scheduled
+            && ! $order->trips()->whereKeyNot($trip->id)->whereIn('status', TripStatus::blocking())->exists()) {
+            $order->update(['status' => OrderStatus::Pending, 'vehicle_id' => null, 'driver_id' => null]);
+        }
     }
 
     /**
      * Raise a validation-style error when the vehicle or driver cannot take a
      * trip in the given window.
      */
-    public function assertAvailable(Vehicle $vehicle, Driver $driver, CarbonInterface $start, CarbonInterface $end, ?int $exceptTripId = null): void
+    public function assertAvailable(Vehicle $vehicle, Driver $driver, CarbonInterface $start, CarbonInterface $end, ?int $exceptTripId = null, ?Driver $coDriver = null): void
     {
         $errors = [];
+        $driverColumns = ['driver_id', 'co_driver_id'];
 
         if ($vehicle->trashed() || ! $vehicle->status->isAssignable()) {
             $errors['vehicle_id'][] = "Vehicle {$vehicle->plate_number} is {$vehicle->status->label()} and cannot be assigned.";
-        } elseif ($conflict = $this->conflictingTrip('vehicle_id', $vehicle->id, $start, $end, $exceptTripId)) {
+        } elseif ($conflict = $this->conflictingTrip(['vehicle_id'], $vehicle->id, $start, $end, $exceptTripId)) {
             $errors['vehicle_id'][] = "Vehicle {$vehicle->plate_number} is already booked on {$conflict->trip_number} ({$conflict->departure_at->format('M j, H:i')} – {$conflict->estimated_arrival_at->format('M j, H:i')}).";
         }
 
@@ -262,8 +325,18 @@ class TripService
             $errors['driver_id'][] = "Driver {$driver->full_name} is {$driver->status->label()} and cannot be assigned.";
         } elseif ($driver->license_expiry->lt($start->copy()->startOfDay())) {
             $errors['driver_id'][] = "Driver {$driver->full_name}'s license expires on {$driver->license_expiry->format('M j, Y')}, before departure.";
-        } elseif ($conflict = $this->conflictingTrip('driver_id', $driver->id, $start, $end, $exceptTripId)) {
+        } elseif ($conflict = $this->conflictingTrip($driverColumns, $driver->id, $start, $end, $exceptTripId)) {
             $errors['driver_id'][] = "Driver {$driver->full_name} is already booked on {$conflict->trip_number} ({$conflict->departure_at->format('M j, H:i')} – {$conflict->estimated_arrival_at->format('M j, H:i')}).";
+        }
+
+        if ($coDriver === null) {
+            // Optional; nothing to check.
+        } elseif ($coDriver->trashed() || ! $coDriver->status->isAssignable()) {
+            $errors['co_driver_id'][] = "Driver {$coDriver->full_name} is {$coDriver->status->label()} and cannot be assigned.";
+        } elseif ($coDriver->license_expiry->lt($start->copy()->startOfDay())) {
+            $errors['co_driver_id'][] = "Driver {$coDriver->full_name}'s license expires on {$coDriver->license_expiry->format('M j, Y')}, before departure.";
+        } elseif ($conflict = $this->conflictingTrip($driverColumns, $coDriver->id, $start, $end, $exceptTripId)) {
+            $errors['co_driver_id'][] = "Driver {$coDriver->full_name} is already booked on {$conflict->trip_number} ({$conflict->departure_at->format('M j, H:i')} – {$conflict->estimated_arrival_at->format('M j, H:i')}).";
         }
 
         if ($errors) {
@@ -274,10 +347,12 @@ class TripService
     /** @return array{vehicles: Collection<int, Vehicle>, drivers: Collection<int, Driver>} */
     public function availableResources(CarbonInterface $start, CarbonInterface $end, ?int $exceptTripId = null): array
     {
-        $busy = fn (string $column) => Trip::query()
+        $busy = fn (string ...$columns) => Trip::query()
             ->overlapping($start, $end)
             ->when($exceptTripId, fn ($q) => $q->whereKeyNot($exceptTripId))
-            ->pluck($column);
+            ->get($columns)
+            ->flatMap(fn (Trip $trip) => array_values($trip->only($columns)))
+            ->filter()->unique()->values();
 
         return [
             'vehicles' => Vehicle::query()
@@ -287,15 +362,16 @@ class TripService
             'drivers' => Driver::query()
                 ->whereIn('status', [DriverStatus::Available, DriverStatus::OnTrip])
                 ->whereDate('license_expiry', '>=', $start->toDateString())
-                ->whereNotIn('id', $busy('driver_id'))
+                ->whereNotIn('id', $busy('driver_id', 'co_driver_id'))
                 ->orderBy('full_name')->get(),
         ];
     }
 
-    private function conflictingTrip(string $column, int $id, CarbonInterface $start, CarbonInterface $end, ?int $exceptTripId): ?Trip
+    /** @param list<string> $columns */
+    private function conflictingTrip(array $columns, int $id, CarbonInterface $start, CarbonInterface $end, ?int $exceptTripId): ?Trip
     {
         return Trip::query()
-            ->where($column, $id)
+            ->where(fn ($q) => collect($columns)->each(fn (string $column) => $q->orWhere($column, $id)))
             ->overlapping($start, $end)
             ->when($exceptTripId, fn ($q) => $q->whereKeyNot($exceptTripId))
             ->orderBy('departure_at')
@@ -315,6 +391,7 @@ class TripService
         foreach ($stops as $stop) {
             $rows[] = [
                 'type' => StopType::Stop,
+                'activity' => $stop['activity'] ?? null,
                 'location_name' => $stop['location_name'],
                 'address' => $stop['address'] ?? null,
                 'order_id' => $stop['order_id'] ?? null,

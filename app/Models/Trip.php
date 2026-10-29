@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\TripPriority;
 use App\Enums\TripStatus;
+use App\Enums\TripType;
 use Database\Factories\TripFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -14,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
-    'trip_number', 'order_id', 'vehicle_id', 'driver_id', 'origin', 'destination', 'departure_at',
+    'trip_number', 'reference_no', 'trip_type', 'priority', 'order_id', 'vehicle_id', 'driver_id', 'co_driver_id', 'origin', 'destination', 'departure_at',
     'estimated_arrival_at', 'actual_departure_at', 'actual_arrival_at', 'distance_km', 'status',
     'dispatched_at', 'dispatched_by', 'dispatch_notes', 'notes', 'created_by',
 ])]
@@ -33,6 +35,8 @@ class Trip extends Model
             'dispatched_at' => 'datetime',
             'distance_km' => 'decimal:2',
             'status' => TripStatus::class,
+            'trip_type' => TripType::class,
+            'priority' => TripPriority::class,
         ];
     }
 
@@ -49,6 +53,11 @@ class Trip extends Model
     public function driver(): BelongsTo
     {
         return $this->belongsTo(Driver::class)->withTrashed();
+    }
+
+    public function coDriver(): BelongsTo
+    {
+        return $this->belongsTo(Driver::class, 'co_driver_id')->withTrashed();
     }
 
     public function dispatcher(): BelongsTo

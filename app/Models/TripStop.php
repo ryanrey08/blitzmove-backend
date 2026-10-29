@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\StopActivity;
 use App\Enums\StopStatus;
 use App\Enums\StopType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'trip_id', 'sequence', 'type', 'location_name', 'address', 'order_id',
+    'trip_id', 'sequence', 'type', 'activity', 'location_name', 'address', 'order_id',
     'estimated_arrival_at', 'actual_arrival_at', 'status', 'notes',
 ])]
 class TripStop extends Model
@@ -19,6 +20,7 @@ class TripStop extends Model
         return [
             'sequence' => 'integer',
             'type' => StopType::class,
+            'activity' => StopActivity::class,
             'status' => StopStatus::class,
             'estimated_arrival_at' => 'datetime',
             'actual_arrival_at' => 'datetime',

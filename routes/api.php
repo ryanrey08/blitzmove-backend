@@ -48,6 +48,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('trips/summary', [TripController::class, 'summary']);
         Route::get('trips/availability', [TripController::class, 'availability']);
+        Route::get('trips/next-number', [TripController::class, 'nextNumber']);
         Route::apiResource('trips', TripController::class)->only(['index', 'show']);
         Route::get('trips/{trip}/stops', [TripStopController::class, 'index']);
 
@@ -67,7 +68,7 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('orders', OrderController::class)->only(['store', 'update', 'destroy']);
             Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus']);
 
-            Route::apiResource('trips', TripController::class)->only(['store', 'update']);
+            Route::apiResource('trips', TripController::class)->only(['store', 'update', 'destroy']);
             Route::post('trips/{trip}/reassign', [TripController::class, 'reassign']);
             Route::patch('trips/{trip}/status', [TripController::class, 'updateStatus']);
             Route::post('trips/{trip}/route/optimize', [RoutingController::class, 'optimize']);

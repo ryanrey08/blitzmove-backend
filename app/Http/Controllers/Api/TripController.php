@@ -15,6 +15,7 @@ use App\Http\Resources\TripResource;
 use App\Http\Resources\VehicleResource;
 use App\Models\Trip;
 use App\Services\DashboardService;
+use App\Services\NumberGenerator;
 use App\Services\TripService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,10 +30,10 @@ class TripController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Trip::query()->with(['order', 'vehicle', 'driver'])->withCount('stops');
+        $query = Trip::query()->with(['order', 'vehicle', 'driver', 'coDriver'])->withCount('stops');
 
-        $this->applySearch($query, $request, ['trip_number', 'origin', 'destination', 'order.order_number', 'driver.full_name', 'vehicle.plate_number']);
-        $this->applyFilters($query, $request, ['status', 'vehicle_id', 'driver_id', 'order_id']);
+        $this->applySearch($query, $request, ['trip_number', 'reference_no', 'origin', 'destination', 'order.order_number', 'driver.full_name', 'vehicle.plate_number']);
+        $this->applyFilters($query, $request, ['status', 'trip_type', 'priority', 'vehicle_id', 'driver_id', 'order_id']);
 
         if ($request->query('scope') === 'dispatch') {
             $query->whereIn('status', [TripStatus::Scheduled, TripStatus::Dispatched, TripStatus::InProgress]);
@@ -68,6 +69,12 @@ class TripController extends Controller
         ]]);
     }
 
+    /** Preview of the number the next trip will get; the final number is assigned on save. */
+    public function nextNumber(NumberGenerator $numbers): JsonResponse
+    {
+        return response()->json(['data' => ['trip_number' => $numbers->next(Trip::class, 'trip_number', 'TRIP')]]);
+    }
+
     public function store(StoreTripRequest $request): JsonResponse
     {
         $trip = $this->trips->schedule($request->validated(), $request->user());
@@ -84,9 +91,16 @@ class TripController extends Controller
 
     public function update(UpdateTripRequest $request, Trip $trip): TripResource
     {
-        $this->trips->update($trip, $request->validated());
+        $this->trips->update($trip, $request->validated(), $request->user());
 
-        return TripResource::make($this->detailed($trip))->additional(['message' => 'Trip updated.']);
+        return TripResource::make($this->detailed($trip))->additional(['message' => "Trip {$trip->trip_number} updated."]);
+    }
+
+    public function destroy(Trip $trip): JsonResponse
+    {
+        $this->trips->delete($trip);
+
+        return response()->json(['message' => "Trip {$trip->trip_number} deleted."]);
     }
 
     public function reassign(ReassignTripRequest $request, Trip $trip): TripResource
@@ -107,7 +121,7 @@ class TripController extends Controller
     private function detailed(Trip $trip): Trip
     {
         return $trip->refresh()->load([
-            'order', 'vehicle', 'driver', 'dispatcher', 'stops.order',
+            'order', 'vehicle', 'driver', 'coDriver', 'dispatcher', 'stops.order',
             'assignments.vehicle', 'assignments.driver', 'assignments.assigner',
         ]);
     }
