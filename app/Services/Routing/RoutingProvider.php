@@ -18,7 +18,7 @@ interface RoutingProvider
     /**
      * @return array{stop_ids: list<int>, distance_km: float, duration_minutes: int, legs: list<array<string, mixed>>}
      */
-    public function optimize(Trip $trip): array;
+    public function optimize(Trip $trip, bool $traffic = false): array;
 
     /**
      * Route an unsaved list of stops (first = origin, last = destination) and
@@ -36,4 +36,14 @@ interface RoutingProvider
      * @param  list<array{lat: float, lng: float}>  $points
      */
     public function trackImage(array $points): ?string;
+
+    /**
+     * Route several stop lists at once (e.g. a day's trips) and draw them on one map.
+     * Each route: stops (label/query, first = origin, last = destination), optimize flag, hex color.
+     * With $traffic, drive times use live and typical traffic.
+     *
+     * @param  array<array-key, array{stops: list<array{label: string, query: string}>, optimize?: bool, color?: string}>  $routes
+     * @return array{routes: array<array-key, array<string, mixed>>, image: string|null}
+     */
+    public function routes(array $routes, bool $traffic = false): array;
 }

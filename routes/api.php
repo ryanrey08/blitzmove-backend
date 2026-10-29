@@ -63,6 +63,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('routing/status', [RoutingController::class, 'status']);
         Route::post('routing/preview', [RoutingController::class, 'preview'])->middleware('throttle:60,1');
+        Route::post('routing/plan', [RoutingController::class, 'plan'])->middleware('throttle:30,1');
         Route::get('gps/vehicles', [GpsController::class, 'index']);
         Route::get('gps/vehicles/{vehicle}/history', [GpsController::class, 'history']);
         Route::get('gps/vehicles/{vehicle}/track', [GpsController::class, 'track']);

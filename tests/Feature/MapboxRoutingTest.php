@@ -109,4 +109,40 @@ class MapboxRoutingTest extends TestCase
             ->assertJsonPath('data.points.0.matched', 'Taguig City, Philippines')
             ->assertJsonPath('data.points.0.lat', 14.52);
     }
+
+    public function test_plan_routes_several_trips_on_one_map_without_saving(): void
+    {
+        $this->actingAsRole(UserRole::Viewer);
+        $make = function (array $names) {
+            $trip = Trip::factory()->create(['origin' => $names[0], 'destination' => end($names)]);
+            foreach ($names as $i => $name) {
+                $trip->stops()->create(['sequence' => $i + 1, 'type' => $i === 0 ? 'pickup' : ($i === count($names) - 1 ? 'dropoff' : 'stop'), 'location_name' => $name, 'status' => 'pending']);
+            }
+
+            return $trip;
+        };
+        $a = $make(['Depot', 'Lipa', 'Calamba', 'Batangas']);
+        $b = $make(['Depot', 'Calamba']);
+        $ids = $a->stops()->pluck('id')->all();
+
+        $response = $this->postJson($this->api('routing/plan'), ['trip_ids' => [$a->id, $b->id], 'optimize' => true])->assertOk();
+        $response->assertJsonCount(2, 'data.routes')
+            ->assertJsonPath('data.routes.0.trip_id', $a->id)
+            ->assertJsonPath('data.routes.0.stop_ids', [$ids[0], $ids[2], $ids[1], $ids[3]])
+            ->assertJsonPath('data.routes.0.color', '#0284c7')
+            ->assertJsonPath('data.routes.1.trip_id', $b->id)
+            ->assertJsonPath('data.image', 'data:image/png;base64,'.base64_encode('PNG'));
+
+        // Nothing is saved by planning.
+        $this->assertSame($ids, $a->stops()->pluck('id')->all());
+        $this->assertNull($a->fresh()->route_optimized_at);
+
+        // A proposed order must contain each stop exactly once.
+        $this->postJson($this->api('routing/plan'), ['trip_ids' => [$a->id], 'orders' => [$a->id => [$ids[0], $ids[1]]]])
+            ->assertStatus(422)->assertJsonValidationErrors("orders.{$a->id}");
+
+        // Traffic-aware routing uses Mapbox's driving-traffic profile.
+        $this->postJson($this->api('routing/plan'), ['trip_ids' => [$b->id], 'traffic' => true])->assertOk();
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'directions/v5/mapbox/driving-traffic/'));
+    }
 }

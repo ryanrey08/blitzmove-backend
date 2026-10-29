@@ -34,6 +34,10 @@ class TripController extends Controller
 
         $this->applySearch($query, $request, ['trip_number', 'reference_no', 'origin', 'destination', 'order.order_number', 'driver.full_name', 'vehicle.plate_number']);
         $this->applyFilters($query, $request, ['status', 'trip_type', 'priority', 'vehicle_id', 'driver_id', 'order_id']);
+        // Exact match: origins can contain commas ("San Fernando, Pampanga").
+        if ($origin = $request->query('origin')) {
+            $query->where('origin', $origin);
+        }
 
         if ($request->query('scope') === 'dispatch') {
             $query->whereIn('status', [TripStatus::Scheduled, TripStatus::Dispatched, TripStatus::InProgress]);

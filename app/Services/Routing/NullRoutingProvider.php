@@ -28,7 +28,12 @@ class NullRoutingProvider implements RoutingProvider
         return null;
     }
 
-    public function optimize(Trip $trip): array
+    public function routes(array $routes, bool $traffic = false): array
+    {
+        return $this->optimize(new Trip);
+    }
+
+    public function optimize(Trip $trip, bool $traffic = false): array
     {
         throw new BusinessRuleException(
             'No routing provider is configured. Set ROUTING_PROVIDER and its credentials to enable route optimisation.',

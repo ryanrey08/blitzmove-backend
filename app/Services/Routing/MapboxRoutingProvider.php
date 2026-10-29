@@ -29,12 +29,13 @@ class MapboxRoutingProvider implements RoutingProvider
         return 'mapbox';
     }
 
-    public function optimize(Trip $trip): array
+    public function optimize(Trip $trip, bool $traffic = false): array
     {
         $stops = $trip->stops->values();
-        $result = $this->preview(
+        $result = $this->plan(
             $stops->map(fn ($stop) => ['label' => $stop->location_name, 'query' => $stop->address ?: $stop->location_name])->all(),
-            optimize: true,
+            true,
+            $this->profile($traffic),
         );
 
         if ($result['unresolved']) {
@@ -50,6 +51,42 @@ class MapboxRoutingProvider implements RoutingProvider
     }
 
     public function preview(array $stops, bool $optimize = false, bool $legendInset = false): array
+    {
+        $plan = $this->plan($stops, $optimize, $this->profile(false));
+
+        return [
+            ...collect($plan)->except(['ordered', 'geometry'])->all(),
+            'image' => $plan['ordered'] ? $this->staticImage($plan['ordered'], $plan['geometry'], $legendInset) : null,
+        ];
+    }
+
+    public function routes(array $routes, bool $traffic = false): array
+    {
+        $profile = $this->profile($traffic);
+        $planned = collect($routes)->mapWithKeys(fn (array $route, $key) => [$key => $this->plan($route['stops'], (bool) ($route['optimize'] ?? false), $profile)]);
+
+        return [
+            'routes' => $planned->map(fn (array $plan) => collect($plan)->except(['ordered', 'geometry'])->all())->all(),
+            'image' => $this->multiRouteImage($planned->map(fn (array $plan, $key) => [
+                'ordered' => $plan['ordered'],
+                'geometry' => $plan['geometry'],
+                'color' => $routes[$key]['color'] ?? '0284c7',
+            ])->values()->all()),
+        ];
+    }
+
+    /** "driving" or, when asked, "driving-traffic" (live and typical traffic). */
+    private function profile(bool $traffic): string
+    {
+        return $traffic ? 'driving-traffic' : 'driving';
+    }
+
+    /**
+     * Geocode, then route (or optimize) the stops. `ordered` and `geometry` are for drawing maps.
+     *
+     * @param  list<array{label: string, query: string}>  $stops
+     */
+    private function plan(array $stops, bool $optimize, string $profile): array
     {
         $points = [];
         $unresolved = [];
@@ -70,7 +107,7 @@ class MapboxRoutingProvider implements RoutingProvider
         }
 
         $resolved = array_values(array_filter($points, fn ($p) => $p['resolved']));
-        $empty = ['points' => $points, 'order' => array_column($points, 'index'), 'distance_km' => null, 'duration_minutes' => null, 'legs' => [], 'image' => null, 'unresolved' => $unresolved];
+        $empty = ['points' => $points, 'order' => array_column($points, 'index'), 'distance_km' => null, 'duration_minutes' => null, 'legs' => [], 'unresolved' => $unresolved, 'ordered' => [], 'geometry' => null];
 
         if (count($resolved) < 2) {
             return $empty;
@@ -81,9 +118,9 @@ class MapboxRoutingProvider implements RoutingProvider
             if (count($resolved) > self::OPTIMIZATION_LIMIT) {
                 throw new BusinessRuleException('Mapbox can optimize up to '.self::OPTIMIZATION_LIMIT.' stops at a time.');
             }
-            $route = $this->optimizedTrip($resolved);
+            $route = $this->optimizedTrip($resolved, $profile);
         } else {
-            $route = $this->directions(array_slice($resolved, 0, self::DIRECTIONS_LIMIT));
+            $route = $this->directions(array_slice($resolved, 0, self::DIRECTIONS_LIMIT), $profile);
         }
 
         $ordered = array_map(fn (int $i) => $resolved[$i], $route['sequence']);
@@ -97,8 +134,9 @@ class MapboxRoutingProvider implements RoutingProvider
                 'distance_km' => round($leg['distance'] / 1000, 1),
                 'duration_minutes' => (int) round($leg['duration'] / 60),
             ], $route['legs']),
-            'image' => $this->staticImage($ordered, $route['geometry'], $legendInset),
             'unresolved' => $unresolved,
+            'ordered' => $ordered,
+            'geometry' => $route['geometry'],
         ];
     }
 
@@ -143,9 +181,9 @@ class MapboxRoutingProvider implements RoutingProvider
     }
 
     /** @param list<array{lng: float, lat: float}> $points */
-    private function directions(array $points): array
+    private function directions(array $points, string $profile = 'driving'): array
     {
-        $response = $this->http()->get('directions/v5/mapbox/driving/'.$this->coordinates($points), [
+        $response = $this->http()->get("directions/v5/mapbox/{$profile}/".$this->coordinates($points), [
             'geometries' => 'polyline',
             'overview' => 'simplified',
         ]);
@@ -161,9 +199,9 @@ class MapboxRoutingProvider implements RoutingProvider
     }
 
     /** First stop stays the origin and last stays the destination. */
-    private function optimizedTrip(array $points): array
+    private function optimizedTrip(array $points, string $profile = 'driving'): array
     {
-        $response = $this->http()->get('optimized-trips/v1/mapbox/driving/'.$this->coordinates($points), [
+        $response = $this->http()->get("optimized-trips/v1/mapbox/{$profile}/".$this->coordinates($points), [
             'source' => 'first',
             'destination' => 'last',
             'roundtrip' => 'false',
@@ -207,6 +245,31 @@ class MapboxRoutingProvider implements RoutingProvider
         // A missing picture shouldn't fail the whole preview, so this call doesn't throw.
         $response = $this->http(throw: false)->get('styles/v1/mapbox/streets-v12/static/'.$overlay.'/auto/640x520@2x', [
             'padding' => $legendInset ? '50,280,50,50' : '50',
+        ]);
+
+        return $response->successful() ? 'data:image/png;base64,'.base64_encode($response->body()) : null;
+    }
+
+    /**
+     * Several routes on one map, each in its own color with numbered pins.
+     * Paths are dropped (pins kept) when the URL would get too long for the Static Images API.
+     */
+    private function multiRouteImage(array $routes): ?string
+    {
+        $routes = array_values(array_filter($routes, fn ($r) => $r['ordered']));
+        if (! $routes) {
+            return null;
+        }
+
+        $pins = collect($routes)->flatMap(fn ($route) => collect($route['ordered'])->map(
+            fn ($point, $i) => sprintf('pin-s-%s+%s(%F,%F)', $i < 99 ? $i + 1 : '', $route['color'], $point['lng'], $point['lat'])
+        ))->implode(',');
+        $paths = collect($routes)->filter(fn ($r) => $r['geometry'])
+            ->map(fn ($r) => sprintf('path-4+%s-0.85(%s)', $r['color'], rawurlencode($r['geometry'])))->implode(',');
+
+        $overlay = $paths && strlen($paths.$pins) < 7500 ? $paths.','.$pins : $pins;
+        $response = $this->http(throw: false)->get('styles/v1/mapbox/streets-v12/static/'.$overlay.'/auto/720x640@2x', [
+            'padding' => '60,240,60,60',
         ]);
 
         return $response->successful() ? 'data:image/png;base64,'.base64_encode($response->body()) : null;
