@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoutingController;
 use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\TripController;
@@ -73,6 +74,10 @@ Route::prefix('v1')->group(function () {
         Route::get('documents/{ownerType}/{id}', [DocumentController::class, 'show'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
         Route::get('documents/{ownerType}/{id}/download', [DocumentController::class, 'download'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
         Route::get('documents/{ownerType}/{id}/files/{fileId}', [DocumentController::class, 'showFile'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber(['id', 'fileId']);
+
+        // Reports: every signed-in role can view and generate them
+        Route::get('reports/overview', [ReportController::class, 'overview']);
+        Route::apiResource('reports', ReportController::class)->only(['index', 'store', 'show', 'destroy']);
 
         Route::get('routing/status', [RoutingController::class, 'status']);
         Route::post('routing/preview', [RoutingController::class, 'preview'])->middleware('throttle:60,1');

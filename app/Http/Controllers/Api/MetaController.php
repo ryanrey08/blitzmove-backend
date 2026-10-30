@@ -31,6 +31,7 @@ class MetaController extends Controller
             'vehicle_document_types' => Enums\VehicleDocumentType::options(),
             'driver_document_types' => Enums\DriverDocumentType::options(),
             'user_roles' => Enums\UserRole::options(),
+            'report_types' => Enums\ReportType::options(),
         ]]);
     }
 }
