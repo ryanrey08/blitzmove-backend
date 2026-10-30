@@ -6,10 +6,11 @@ use App\Enums\OrderStatus;
 use App\Enums\TripStatus;
 use App\Enums\UserRole;
 use App\Enums\VehicleStatus;
-use App\Models\Driver;
+use App\Models\FuelRecord;
 use App\Models\Order;
 use App\Models\Trip;
 use App\Models\Vehicle;
+use App\Models\VehicleLocation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -52,16 +53,44 @@ class DashboardMonitoringTest extends TestCase
             ->assertJsonCount(0, 'data.recent_orders');
     }
 
-    public function test_monitoring_overview_lists_assignments_and_expiring_licenses(): void
+    public function test_monitoring_counts_today_and_the_same_day_last_week_from_records(): void
     {
+        $this->travelTo(now()->setTime(12, 0));
         $this->actingAsRole(UserRole::Viewer);
-        Trip::factory()->create(['status' => TripStatus::Dispatched]);
-        Driver::factory()->create(['license_expiry' => now()->addDays(5)->toDateString()]);
+        Trip::factory()->create(['status' => TripStatus::InProgress, 'estimated_arrival_at' => now()->addHour()]);
+        Trip::factory()->create(['status' => TripStatus::Dispatched, 'estimated_arrival_at' => now()->subHour()]);
+        Trip::factory()->create(['status' => TripStatus::InProgress, 'estimated_arrival_at' => now()->subDays(2)]);
+        Trip::factory()->create(['status' => TripStatus::Cancelled, 'departure_at' => now()->addHours(2)]);
+        Trip::factory()->create(['status' => TripStatus::Completed, 'distance_km' => 120, 'estimated_arrival_at' => now()->subHours(3), 'actual_arrival_at' => now()->subHours(2)]);
+        Trip::factory()->create(['status' => TripStatus::Completed, 'distance_km' => 80, 'actual_arrival_at' => now()->subWeek()]);
+        FuelRecord::factory()->create(['fueled_at' => now()->subHour(), 'liters' => 45.5]);
+        $vehicle = Vehicle::factory()->create();
+        VehicleLocation::create(['vehicle_id' => $vehicle->id, 'latitude' => 14.6, 'longitude' => 121, 'speed_kph' => 60, 'recorded_at' => now()->subMinutes(5)]);
+        VehicleLocation::create(['vehicle_id' => $vehicle->id, 'latitude' => 14.6, 'longitude' => 121, 'speed_kph' => 0, 'recorded_at' => now()->subMinutes(4)]);
 
         $this->getJson($this->api('fleet/monitoring'))->assertOk()
-            ->assertJsonCount(1, 'data.active_assignments')
-            ->assertJsonCount(1, 'data.expiring_licenses')
-            ->assertJsonPath('data.utilization.vehicles_total', 1);
+            ->assertJsonPath('data.active_trips.total', 3)
+            ->assertJsonPath('data.active_trips.on_time', 1)
+            ->assertJsonPath('data.active_trips.delayed', 2)
+            ->assertJsonPath('data.active_trips.cancelled_today', 1)
+            ->assertJsonPath('data.today.completed', 1)
+            ->assertJsonPath('data.today.delayed', 3)
+            ->assertJsonPath('data.today.distance_km', 120)
+            ->assertJsonPath('data.today.fuel_liters', 45.5)
+            ->assertJsonPath('data.today.average_speed_kph', 60)
+            ->assertJsonPath('data.last_week.completed', 1)
+            ->assertJsonPath('data.last_week.distance_km', 80)
+            ->assertJsonPath('data.gps.has_data', true);
+    }
+
+    public function test_monitoring_leaves_speed_empty_without_gps_data(): void
+    {
+        $this->actingAsRole(UserRole::Viewer);
+
+        $this->getJson($this->api('fleet/monitoring'))->assertOk()
+            ->assertJsonPath('data.today.average_speed_kph', null)
+            ->assertJsonPath('data.gps.has_data', false)
+            ->assertJsonPath('data.gps.last_reported_at', null);
     }
 
     public function test_routing_reports_unconfigured_provider_instead_of_inventing_routes(): void

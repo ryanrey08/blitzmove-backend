@@ -69,4 +69,18 @@ class GpsDashboardTest extends TestCase
         $this->assertSame(['arrived', 'departed', 'dispatched'], array_column($events, 'type'));
         $this->assertStringContainsString('Depot (Stop 1)', $events[0]['text']);
     }
+
+    public function test_events_can_be_limited_to_one_vehicle(): void
+    {
+        $this->travelTo(now()->setTime(12, 0));
+        $this->actingAsRole(UserRole::Viewer);
+        $trip = Trip::factory()->create(['status' => TripStatus::InProgress, 'actual_departure_at' => now()->subHour()]);
+        Trip::factory()->create(['status' => TripStatus::InProgress, 'actual_departure_at' => now()->subHour()]);
+
+        $events = $this->getJson($this->api("gps/events?vehicle_id={$trip->vehicle_id}"))->assertOk()->json('data');
+
+        $this->assertCount(1, $events);
+        $this->assertSame($trip->vehicle_id, $events[0]['vehicle_id']);
+        $this->assertSame($trip->origin, $events[0]['location']);
+    }
 }

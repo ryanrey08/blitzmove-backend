@@ -24,7 +24,7 @@ class GpsController extends Controller
 {
     public function index(RoutingProvider $routing): JsonResponse
     {
-        $vehicles = Vehicle::with(['latestLocation', 'assignedDriver', 'activeTrips.driver'])->orderBy('plate_number')->get();
+        $vehicles = Vehicle::with(['latestLocation', 'assignedDriver', 'activeTrips.driver', 'photos'])->orderBy('plate_number')->get();
         // Place names for last positions (reverse geocoded, cached) when a map provider is set up.
         $places = $routing->isConfigured()
             ? $vehicles->filter(fn (Vehicle $v) => $v->latestLocation)
@@ -74,30 +74,44 @@ class GpsController extends Controller
         ]]);
     }
 
-    /** Today's trip and stop events (dispatches, departures, stop arrivals, completions), newest first. */
+    /**
+     * Today's trip and stop events (dispatches, departures, stop arrivals, completions), newest first.
+     * Pass vehicle_id for one vehicle's timeline.
+     */
     public function events(Request $request): JsonResponse
     {
+        $request->validate(['vehicle_id' => ['sometimes', 'integer']]);
+        $vehicleId = $request->integer('vehicle_id') ?: null;
         $since = now()->startOfDay();
-        $trips = Trip::with('vehicle')->where(fn ($q) => $q->where('dispatched_at', '>=', $since)->orWhere('actual_departure_at', '>=', $since)->orWhere('actual_arrival_at', '>=', $since))->get();
-        $stops = TripStop::with('trip.vehicle')->where('actual_arrival_at', '>=', $since)->whereHas('trip')->get();
+        $trips = Trip::with('vehicle')
+            ->when($vehicleId, fn ($q) => $q->where('vehicle_id', $vehicleId))
+            ->where(fn ($q) => $q->where('dispatched_at', '>=', $since)->orWhere('actual_departure_at', '>=', $since)->orWhere('actual_arrival_at', '>=', $since))->get();
+        $stops = TripStop::with('trip.vehicle')->where('actual_arrival_at', '>=', $since)
+            ->whereHas('trip', fn ($q) => $q->when($vehicleId, fn ($q) => $q->where('vehicle_id', $vehicleId)))->get();
 
         $events = collect();
         foreach ($trips as $trip) {
             $plate = $trip->vehicle?->plate_number;
+            $base = ['vehicle_id' => $trip->vehicle_id, 'trip_id' => $trip->id, 'trip_number' => $trip->trip_number];
             if ($trip->dispatched_at?->gte($since)) {
-                $events->push(['at' => $trip->dispatched_at, 'type' => 'dispatched', 'text' => "{$trip->trip_number} dispatched to {$plate}"]);
+                $events->push([...$base, 'at' => $trip->dispatched_at, 'type' => 'dispatched', 'location' => $trip->origin, 'text' => "{$trip->trip_number} dispatched to {$plate}"]);
             }
             if ($trip->actual_departure_at?->gte($since)) {
-                $events->push(['at' => $trip->actual_departure_at, 'type' => 'departed', 'text' => "{$plate} departed {$trip->origin}"]);
+                $events->push([...$base, 'at' => $trip->actual_departure_at, 'type' => 'departed', 'location' => $trip->origin, 'text' => "{$plate} departed {$trip->origin}"]);
             }
             if ($trip->actual_arrival_at?->gte($since)) {
-                $events->push(['at' => $trip->actual_arrival_at, 'type' => 'completed', 'text' => "{$plate} completed {$trip->trip_number}"]);
+                $events->push([...$base, 'at' => $trip->actual_arrival_at, 'type' => 'completed', 'location' => $trip->destination, 'text' => "{$plate} completed {$trip->trip_number}"]);
             }
         }
         foreach ($stops as $stop) {
             $plate = $stop->trip->vehicle?->plate_number;
-            $verb = $stop->status->value === 'skipped' ? 'skipped' : 'arrived at';
-            $events->push(['at' => $stop->actual_arrival_at, 'type' => $stop->status->value === 'skipped' ? 'skipped' : 'arrived', 'text' => "{$plate} {$verb} {$stop->location_name} (Stop {$stop->sequence})"]);
+            $skipped = $stop->status->value === 'skipped';
+            $verb = $skipped ? 'skipped' : 'arrived at';
+            $events->push([
+                'vehicle_id' => $stop->trip->vehicle_id, 'trip_id' => $stop->trip_id, 'trip_number' => $stop->trip->trip_number,
+                'at' => $stop->actual_arrival_at, 'type' => $skipped ? 'skipped' : 'arrived', 'location' => $stop->location_name,
+                'text' => "{$plate} {$verb} {$stop->location_name} (Stop {$stop->sequence})",
+            ]);
         }
 
         return response()->json(['data' => $events->sortByDesc('at')->take(min(50, max(1, (int) $request->query('limit', 15))))->map(fn ($e) => [...$e, 'at' => $e['at']->toIso8601String()])->values()]);
