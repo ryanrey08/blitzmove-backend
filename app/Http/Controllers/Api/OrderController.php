@@ -34,6 +34,13 @@ class OrderController extends Controller
         if ($to = $request->query('pickup_to')) {
             $query->where('scheduled_pickup_at', '<=', $to.' 23:59:59');
         }
+        // Reports → Delivery Reports: orders due for delivery in the period.
+        if ($from = $request->query('delivery_from')) {
+            $query->where('scheduled_delivery_at', '>=', $from);
+        }
+        if ($to = $request->query('delivery_to')) {
+            $query->where('scheduled_delivery_at', '<=', $to.' 23:59:59');
+        }
         if ($request->boolean('schedulable')) {
             $query->whereIn('status', [OrderStatus::Pending, OrderStatus::Scheduled]);
         }
@@ -54,7 +61,7 @@ class OrderController extends Controller
             $query->where('created_at', '<=', $to.' 23:59:59');
         }
 
-        $this->applySort($query, $request, ['order_number', 'customer_name', 'scheduled_pickup_at', 'scheduled_delivery_at', 'status', 'amount', 'created_at']);
+        $this->applySort($query, $request, ['order_number', 'customer_name', 'scheduled_pickup_at', 'scheduled_delivery_at', 'delivered_at', 'status', 'amount', 'created_at']);
 
         return OrderResource::collection($query->paginate($this->perPage($request))->withQueryString());
     }

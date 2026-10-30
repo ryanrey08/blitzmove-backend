@@ -20,6 +20,7 @@ class ReportResource extends JsonResource
             'period_to' => $this->period_to?->toDateString(),
             'vehicle_id' => $this->filters['vehicle_id'] ?? null,
             'driver_id' => $this->filters['driver_id'] ?? null,
+            'config' => $this->filters['config'] ?? null,
             'generated_by' => $this->whenLoaded('generator', fn () => $this->generator ? ['id' => $this->generator->id, 'name' => $this->generator->name] : null),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
