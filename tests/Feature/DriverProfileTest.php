@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Enums\TripStatus;
 use App\Enums\UserRole;
 use App\Models\Driver;
+use App\Models\DriverDocument;
+use App\Models\FuelRecord;
 use App\Models\Trip;
 use App\Models\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -98,5 +100,29 @@ class DriverProfileTest extends TestCase
         $this->getJson($this->api("drivers/{$driver->id}"))->assertOk()
             ->assertJsonPath('performance.completed_trips', 2)
             ->assertJsonPath('performance.on_time_rate', 50);
+    }
+
+    public function test_detail_includes_assigned_vehicle_fuel_and_documents(): void
+    {
+        $this->actingAsRole(UserRole::Viewer);
+        $driver = Driver::factory()->create();
+        $vehicle = Vehicle::factory()->create(['assigned_driver_id' => $driver->id]);
+        FuelRecord::factory()->create(['driver_id' => $driver->id, 'vehicle_id' => $vehicle->id, 'fueled_at' => now()->subDays(2)]);
+        $latest = FuelRecord::factory()->create(['driver_id' => $driver->id, 'vehicle_id' => $vehicle->id, 'fueled_at' => now()->subDay()]);
+        FuelRecord::factory()->create(); // someone else's
+        DriverDocument::create(['driver_id' => $driver->id, 'document_type' => 'license', 'title' => 'Later', 'expires_at' => now()->addYear()]);
+        DriverDocument::create(['driver_id' => $driver->id, 'document_type' => 'license', 'title' => 'Sooner', 'expires_at' => now()->addMonth()]);
+
+        $this->getJson($this->api("drivers/{$driver->id}"))->assertOk()
+            ->assertJsonPath('data.assigned_vehicle.id', $vehicle->id)
+            ->assertJsonPath('data.fuel_records_count', 2)
+            ->assertJsonCount(2, 'data.recent_fuel_records')
+            ->assertJsonPath('data.recent_fuel_records.0.id', $latest->id)
+            ->assertJsonPath('data.recent_fuel_records.0.vehicle.id', $vehicle->id)
+            ->assertJsonPath('data.documents_count', 2)
+            ->assertJsonPath('data.documents.0.title', 'Sooner')
+            ->assertJsonPath('data.documents.0.files', []);
+
+        $this->getJson($this->api('drivers/999999'))->assertNotFound();
     }
 }

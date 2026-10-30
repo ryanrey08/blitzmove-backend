@@ -37,6 +37,9 @@ class DriverResource extends JsonResource
             'trips_count' => $this->whenCounted('trips'),
             'completed_trips_count' => $this->whenCounted('completedTrips'),
             'recent_trips' => TripResource::collection($this->whenLoaded('trips')),
+            'fuel_records_count' => $this->whenCounted('fuelRecords'),
+            'recent_fuel_records' => FuelRecordResource::collection($this->whenLoaded('fuelRecords')),
+            'documents' => DriverDocumentResource::collection($this->whenLoaded('documents')),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

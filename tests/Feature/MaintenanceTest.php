@@ -133,4 +133,15 @@ class MaintenanceTest extends TestCase
         $this->getJson($this->api('maintenance-records'))->assertOk();
         $this->postJson($this->api('maintenance-records'), [])->assertForbidden();
     }
+
+    public function test_detail_includes_vehicle_and_viewers_can_read_it(): void
+    {
+        $this->actingAsRole(UserRole::Viewer);
+        $record = MaintenanceRecord::factory()->create();
+
+        $this->getJson($this->api("maintenance-records/{$record->id}"))->assertOk()
+            ->assertJsonPath('data.vehicle.id', $record->vehicle_id)
+            ->assertJsonPath('data.files', []);
+        $this->getJson($this->api('maintenance-records/999999'))->assertNotFound();
+    }
 }

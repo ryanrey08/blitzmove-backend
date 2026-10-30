@@ -70,7 +70,9 @@ class DriverController extends Controller
         return DriverResource::make($driver->load([
             'assignedVehicle.photos',
             'trips' => fn ($q) => $q->with('vehicle')->latest('departure_at')->limit(10),
-        ])->loadCount(['documents', 'trips', 'completedTrips']))->additional(['performance' => [
+            'fuelRecords' => fn ($q) => $q->with('vehicle')->latest('fueled_at')->limit(10),
+            'documents' => fn ($q) => $q->with('files')->orderByRaw('expires_at is null')->orderBy('expires_at'),
+        ])->loadCount(['documents', 'trips', 'completedTrips', 'fuelRecords']))->additional(['performance' => [
             // Last 30 days, from trip records only (ratings and incidents aren't tracked).
             'completed_trips' => $completed->count(),
             'on_time_rate' => $completed->count() ? round($completed->filter(fn ($t) => $t->actual_arrival_at->lte($t->estimated_arrival_at))->count() / $completed->count() * 100) : null,

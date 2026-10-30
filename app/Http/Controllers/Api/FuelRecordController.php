@@ -59,7 +59,7 @@ class FuelRecordController extends Controller
 
     public function show(FuelRecord $fuelRecord): FuelRecordResource
     {
-        return FuelRecordResource::make($fuelRecord->load(['vehicle', 'driver', 'trip']));
+        return FuelRecordResource::make($fuelRecord->load(['vehicle.photos', 'driver', 'trip']));
     }
 
     public function update(FuelRecordRequest $request, FuelRecord $fuelRecord): FuelRecordResource

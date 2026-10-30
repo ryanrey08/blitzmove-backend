@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\UserRole;
 use App\Models\DocumentFile;
 use App\Models\Driver;
+use App\Models\DriverDocument;
 use App\Models\FuelRecord;
 use App\Models\Vehicle;
 use App\Models\VehicleDocument;
@@ -184,5 +185,27 @@ class FuelAndDocumentTest extends TestCase
         $this->postJson($this->api('fuel-records'), [])->assertForbidden();
         $record = FuelRecord::factory()->create(['vehicle_id' => $vehicle->id]);
         $this->postJson($this->api("fuel-records/{$record->id}/receipt"), [])->assertForbidden();
+    }
+
+    public function test_detail_endpoints_include_related_records(): void
+    {
+        $this->actingAsRole(UserRole::Viewer);
+        $driver = Driver::factory()->create();
+        $vehicle = Vehicle::factory()->create();
+        $record = FuelRecord::factory()->create(['vehicle_id' => $vehicle->id, 'driver_id' => $driver->id]);
+
+        $this->getJson($this->api("fuel-records/{$record->id}"))->assertOk()
+            ->assertJsonPath('data.vehicle.plate_number', $vehicle->plate_number)
+            ->assertJsonPath('data.vehicle.photos', [])
+            ->assertJsonPath('data.driver.full_name', $driver->full_name);
+        $this->getJson($this->api('fuel-records/999999'))->assertNotFound();
+
+        $vehicleDoc = VehicleDocument::create(['vehicle_id' => $vehicle->id, 'document_type' => 'registration', 'title' => 'OR/CR']);
+        $driverDoc = DriverDocument::create(['driver_id' => $driver->id, 'document_type' => 'license', 'title' => 'License']);
+        $this->getJson($this->api("documents/vehicle/{$vehicleDoc->id}"))->assertOk()
+            ->assertJsonPath('data.vehicle.id', $vehicle->id)->assertJsonPath('data.files', []);
+        $this->getJson($this->api("documents/driver/{$driverDoc->id}"))->assertOk()
+            ->assertJsonPath('data.driver.id', $driver->id);
+        $this->getJson($this->api('documents/driver/999999'))->assertNotFound();
     }
 }
