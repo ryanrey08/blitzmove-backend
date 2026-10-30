@@ -26,6 +26,9 @@ use Illuminate\Support\Collection;
  * - Utilization rate (per vehicle): days in the period on which the vehicle was on a non-cancelled trip
  *   (departure until actual, else estimated, arrival) ÷ days in the period.
  *
+ * - Fuel efficiency (Reports → Fuel Reports): kilometres of the odometer legs ÷ liters bought at the fill-ups
+ *   that close them (full-tank method). Null when no leg is available.
+ *
  * Periods are whole days in the app timezone. The comparison period is the same number of days
  * immediately before.
  */
@@ -103,6 +106,51 @@ class ReportService
         ];
     }
 
+    /**
+     * Reports → Fuel Reports: stat cards with the previous period, daily liters/cost, a breakdown by the chosen
+     * grouping, fuel types, stations and the routes of trips that have fuel records (for the route filter).
+     *
+     * @param  array{vehicle_id?: int|null, driver_id?: int|null, fuel_type?: string|null, payment_method?: string|null, station?: string|null, route_origin?: string|null, route_destination?: string|null}  $filters
+     */
+    public function fuelReport(string $from, string $to, array $filters = [], string $groupBy = 'vehicle'): array
+    {
+        [$start, $end] = $this->period($from, $to);
+        $days = (int) $start->diffInDays($end->startOfDay()) + 1;
+        [$prevStart, $prevEnd] = [$start->subDays($days), $start->subSecond()];
+
+        $current = $this->fuelTotals($start, $end, $filters);
+        $previous = $this->fuelTotals($prevStart, $prevEnd, $filters);
+        $records = $this->fuel($start, $end, $filters)->with(['vehicle:id,plate_number', 'driver:id,full_name'])
+            ->get(['id', 'vehicle_id', 'driver_id', 'fueled_at', 'fuel_type', 'liters', 'total_cost', 'station']);
+        $sum = fn (Collection $rows) => [
+            'liters' => round((float) $rows->sum('liters'), 2),
+            'cost' => round((float) $rows->sum('total_cost'), 2),
+            'transactions' => $rows->count(),
+        ];
+
+        return [
+            'period' => ['from' => $start->toDateString(), 'to' => $end->toDateString(), 'days' => $days],
+            'previous_period' => ['from' => $prevStart->toDateString(), 'to' => $prevEnd->toDateString()],
+            'stats' => collect(['fuel_liters', 'fuel_cost', 'efficiency_km_per_liter', 'distance_km', 'transactions'])
+                ->mapWithKeys(fn ($key) => [$key => ['value' => $current[$key], 'previous' => $previous[$key]]]),
+            'daily' => collect($this->daily($start, $end, collect(), $filters))
+                ->map(fn ($day) => ['date' => $day['date'], 'fuel_liters' => $day['fuel_liters'], 'fuel_cost' => $day['fuel_cost']])->all(),
+            'group_by' => $groupBy,
+            'groups' => $this->fuelGroups($records, $groupBy, $start, $end)
+                ->map(fn (Collection $rows, $key) => ['key' => (string) $key, 'label' => $rows->first()->group_label, ...$sum($rows)])
+                ->values()->all(),
+            'fuel_types' => $records->groupBy(fn (FuelRecord $r) => $r->fuel_type->value)
+                ->map(fn (Collection $rows, $key) => ['key' => $key, 'label' => $rows->first()->fuel_type->label(), ...$sum($rows)])
+                ->sortByDesc('liters')->values()->all(),
+            'stations' => $records->filter(fn (FuelRecord $r) => trim((string) $r->station) !== '')->groupBy('station')
+                ->map(fn (Collection $rows, $key) => ['key' => $key, 'label' => $key, ...$sum($rows)])
+                ->sortByDesc('cost')->values()->all(),
+            'routes' => Trip::query()->whereIn('id', FuelRecord::query()->whereNotNull('trip_id')->select('trip_id'))
+                ->select(['origin', 'destination'])->distinct()->orderBy('origin')->orderBy('destination')->limit(200)->get()
+                ->map(fn (Trip $t) => ['origin' => $t->origin, 'destination' => $t->destination])->all(),
+        ];
+    }
+
     /** @return array{CarbonImmutable, CarbonImmutable} */
     private function period(string $from, string $to): array
     {
@@ -127,6 +175,49 @@ class ReportService
             'on_time' => $onTime,
             'on_time_rate' => $completedCount ? round($onTime / $completedCount * 100, 1) : null,
         ];
+    }
+
+    private function fuelTotals(CarbonImmutable $start, CarbonImmutable $end, array $filters): array
+    {
+        $totals = $this->fuel($start, $end, $filters)->toBase()
+            ->selectRaw('count(*) as entries, coalesce(sum(liters), 0) as liters, coalesce(sum(total_cost), 0) as cost')->first();
+        $legs = $this->odometerDistances($start, $end, $filters);
+        $legLiters = (float) $legs->sum('liters');
+
+        return [
+            'fuel_liters' => (int) $totals->entries ? round((float) $totals->liters, 2) : null,
+            'fuel_cost' => (int) $totals->entries ? round((float) $totals->cost, 2) : null,
+            'transactions' => (int) $totals->entries,
+            'distance_km' => $legs->isEmpty() ? null : round($legs->sum('km'), 1),
+            'efficiency_km_per_liter' => $legs->isEmpty() || $legLiters <= 0 ? null : round($legs->sum('km') / $legLiters, 2),
+        ];
+    }
+
+    /**
+     * Fuel records grouped for the "Group By" charts; each record carries its group_label.
+     * Dates are grouped in 7-day blocks from the start of the period.
+     *
+     * @return Collection<string, Collection<int, FuelRecord>>
+     */
+    private function fuelGroups(Collection $records, string $groupBy, CarbonImmutable $start, CarbonImmutable $end): Collection
+    {
+        foreach ($records as $record) {
+            [$record->group_key, $record->group_label] = match ($groupBy) {
+                'driver' => [(string) ($record->driver_id ?? 'none'), $record->driver?->full_name ?? 'No driver'],
+                'fuel_type' => [$record->fuel_type->value, $record->fuel_type->label()],
+                'date' => (function () use ($record, $start, $end) {
+                    $block = intdiv((int) floor($start->diffInDays($record->fueled_at)), 7);
+                    $from = $start->addDays($block * 7);
+                    $to = $from->addDays(6)->min($end->startOfDay());
+
+                    return [$from->toDateString(), $from->isSameDay($to) ? $from->format('M j') : $from->format('M j').' – '.$to->format($from->month === $to->month ? 'j' : 'M j')];
+                })(),
+                default => [(string) $record->vehicle_id, $record->vehicle?->plate_number ?? 'Unknown vehicle'],
+            };
+        }
+        $groups = $records->groupBy('group_key');
+
+        return $groupBy === 'date' ? $groups->sortKeys() : $groups->sortByDesc(fn (Collection $rows) => $rows->sum('liters'));
     }
 
     /** One row per day: distance (null when no odometer data at all in the period), fuel liters and cost. */
@@ -169,29 +260,29 @@ class ReportService
     }
 
     /**
-     * Kilometres driven between consecutive odometer readings, one entry per fill-up in the period.
+     * Kilometres driven between consecutive odometer readings, one entry per fill-up in the period that matches
+     * the filters (the "closing" fill-up, which also carries the liters bought there).
      *
-     * @return Collection<int, array{vehicle_id: int, day: string, km: float}>
+     * @return Collection<int, array{vehicle_id: int, day: string, km: float, liters: float}>
      */
     private function odometerDistances(CarbonImmutable $start, CarbonImmutable $end, array $filters): Collection
     {
-        $vehicleIds = $this->fuel($start, $end, $filters)->whereNotNull('odometer_km')->distinct()->pluck('vehicle_id');
-        if ($vehicleIds->isEmpty()) {
+        $closing = $this->fuel($start, $end, $filters)->whereNotNull('odometer_km')->pluck('vehicle_id', 'id');
+        if ($closing->isEmpty()) {
             return collect();
         }
 
         // Every reading of those vehicles up to the end, so the first fill-up in the period has a predecessor.
-        $readings = FuelRecord::whereIn('vehicle_id', $vehicleIds)->whereNotNull('odometer_km')->where('fueled_at', '<=', $end)
+        $readings = FuelRecord::whereIn('vehicle_id', $closing->unique()->values())->whereNotNull('odometer_km')->where('fueled_at', '<=', $end)
             ->orderBy('vehicle_id')->orderBy('fueled_at')->orderBy('id')
-            ->get(['vehicle_id', 'driver_id', 'fueled_at', 'odometer_km']);
-        $driverId = $filters['driver_id'] ?? null;
+            ->get(['id', 'vehicle_id', 'fueled_at', 'odometer_km', 'liters']);
 
-        return $readings->groupBy('vehicle_id')->flatMap(function (Collection $rows) use ($start, $driverId) {
+        return $readings->groupBy('vehicle_id')->flatMap(function (Collection $rows) use ($closing) {
             $legs = [];
             $previous = null;
             foreach ($rows as $row) {
-                if ($previous !== null && $row->fueled_at->gte($start) && $row->odometer_km > $previous && (! $driverId || $row->driver_id == $driverId)) {
-                    $legs[] = ['vehicle_id' => $row->vehicle_id, 'day' => $row->fueled_at->toDateString(), 'km' => (float) ($row->odometer_km - $previous)];
+                if ($previous !== null && $closing->has($row->id) && $row->odometer_km > $previous) {
+                    $legs[] = ['vehicle_id' => $row->vehicle_id, 'day' => $row->fueled_at->toDateString(), 'km' => (float) ($row->odometer_km - $previous), 'liters' => (float) $row->liters];
                 }
                 $previous = max($previous ?? 0, $row->odometer_km);
             }
@@ -220,9 +311,15 @@ class ReportService
         return $this->filtered(Trip::query(), $filters)->whereBetween('departure_at', [$start, $end]);
     }
 
+    /** Fuel records in the period; fuel_type, payment_method, station and route only come from Fuel Reports. */
     private function fuel(CarbonImmutable $start, CarbonImmutable $end, array $filters): Builder
     {
-        return $this->filtered(FuelRecord::query(), $filters)->whereBetween('fueled_at', [$start, $end]);
+        return $this->filtered(FuelRecord::query(), $filters)->whereBetween('fueled_at', [$start, $end])
+            ->when($filters['fuel_type'] ?? null, fn (Builder $q, $type) => $q->where('fuel_type', $type))
+            ->when($filters['payment_method'] ?? null, fn (Builder $q, $method) => $q->where('payment_method', $method))
+            ->when($filters['station'] ?? null, fn (Builder $q, $station) => $q->where('station', $station))
+            ->when($filters['route_origin'] ?? null, fn (Builder $q) => $q->whereHas('trip', fn (Builder $t) => $t
+                ->where('origin', $filters['route_origin'])->where('destination', $filters['route_destination'] ?? '')));
     }
 
     private function filtered(Builder $query, array $filters): Builder

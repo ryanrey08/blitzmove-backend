@@ -77,6 +77,7 @@ Route::prefix('v1')->group(function () {
 
         // Reports: every signed-in role can view and generate them
         Route::get('reports/overview', [ReportController::class, 'overview']);
+        Route::get('reports/fuel', [ReportController::class, 'fuel']);
         Route::apiResource('reports', ReportController::class)->only(['index', 'store', 'show', 'destroy']);
 
         Route::get('routing/status', [RoutingController::class, 'status']);

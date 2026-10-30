@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\ReportType;
 use App\Http\Controllers\Concerns\ListsResources;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\FuelReportRequest;
 use App\Http\Requests\ReportPeriodRequest;
 use App\Http\Requests\ReportRequest;
 use App\Http\Resources\ReportResource;
@@ -27,6 +28,18 @@ class ReportController extends Controller
         $data = $request->validated();
 
         return response()->json(['data' => $this->reports->overview($data['from'], $data['to'], $this->filters($data))]);
+    }
+
+    /** Stat cards, charts and route options for Reports → Fuel Reports; the transactions come from /fuel-records. */
+    public function fuel(FuelReportRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $filters = [
+            ...$this->filters($data),
+            ...array_filter(collect($data)->only(['fuel_type', 'payment_method', 'station', 'route_origin', 'route_destination'])->all()),
+        ];
+
+        return response()->json(['data' => $this->reports->fuelReport($data['from'], $data['to'], $filters, $data['group_by'] ?? 'vehicle')]);
     }
 
     public function index(Request $request): AnonymousResourceCollection

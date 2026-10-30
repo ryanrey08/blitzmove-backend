@@ -23,7 +23,7 @@ class FuelRecordController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = $this->filtered($request)->with(['vehicle', 'driver', 'trip']);
-        $this->applySort($query, $request, ['fueled_at', 'liters', 'total_cost', 'created_at'], '-fueled_at');
+        $this->applySort($query, $request, ['fueled_at', 'liters', 'price_per_liter', 'total_cost', 'odometer_km', 'created_at'], '-fueled_at');
 
         return FuelRecordResource::collection($query->paginate($this->perPage($request))->withQueryString());
     }
@@ -126,7 +126,15 @@ class FuelRecordController extends Controller
     {
         $query = FuelRecord::query();
         $this->applySearch($query, $request, ['station', 'receipt_number', 'reference_number', 'vehicle.plate_number', 'driver.full_name']);
-        $this->applyFilters($query, $request, ['vehicle_id', 'driver_id', 'fuel_type']);
+        $this->applyFilters($query, $request, ['vehicle_id', 'driver_id', 'fuel_type', 'payment_method']);
+
+        // Exact station name (names can contain commas, so not a list filter) and the route of the linked trip.
+        if (($station = $request->query('station')) !== null && $station !== '') {
+            $query->where('station', $station);
+        }
+        if ($origin = $request->query('route_origin')) {
+            $query->whereHas('trip', fn (Builder $t) => $t->where('origin', $origin)->where('destination', (string) $request->query('route_destination')));
+        }
 
         if ($from = $request->query('from')) {
             $query->where('fueled_at', '>=', $from);

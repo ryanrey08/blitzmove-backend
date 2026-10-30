@@ -27,11 +27,11 @@ class ReportTest extends TestCase
         ]);
     }
 
-    private function fuel(Vehicle $vehicle, ?Driver $driver, string $at, int $odometer, float $liters): FuelRecord
+    private function fuel(Vehicle $vehicle, ?Driver $driver, string $at, int $odometer, float $liters, array $overrides = []): FuelRecord
     {
         return FuelRecord::factory()->create([
             'vehicle_id' => $vehicle->id, 'driver_id' => $driver?->id, 'fueled_at' => $at, 'odometer_km' => $odometer,
-            'liters' => $liters, 'price_per_liter' => 60, 'total_cost' => $liters * 60,
+            'liters' => $liters, 'price_per_liter' => 60, 'total_cost' => $liters * 60, ...$overrides,
         ]);
     }
 
@@ -88,6 +88,64 @@ class ReportTest extends TestCase
             ->assertJsonPath('data.stats.distance_km.value', null)
             ->assertJsonPath('data.stats.on_time_rate.value', null)
             ->assertJsonPath('data.daily.0.distance_km', null);
+    }
+
+    public function test_fuel_report_computes_stats_breakdowns_and_filters(): void
+    {
+        $this->actingAsRole(UserRole::Viewer);
+        $truck = Vehicle::factory()->create(['plate_number' => 'TRK-001']);
+        $van = Vehicle::factory()->create(['plate_number' => 'VAN-003']);
+        $ana = Driver::factory()->create(['full_name' => 'Ana Cruz']);
+        $ben = Driver::factory()->create(['full_name' => 'Ben Reyes']);
+        $trip = $this->trip($truck, $ana, '2026-10-05 06:00', TripStatus::Completed, ['origin' => 'Manila', 'destination' => 'Batangas']);
+
+        $this->fuel($truck, $ana, '2026-09-25 08:00', 10_000, 50, ['station' => 'Petron - Bicutan']);
+        $this->fuel($truck, $ana, '2026-10-05 08:00', 10_400, 40, ['station' => 'Petron - Bicutan', 'payment_method' => 'cash', 'trip_id' => $trip->id]);
+        $this->fuel($truck, $ben, '2026-10-12 08:00', 10_700, 30, ['station' => 'Shell, SLEX', 'payment_method' => 'fuel_card']);
+        $this->fuel($van, $ben, '2026-10-12 09:00', 5_000, 20, ['station' => 'Shell, SLEX', 'fuel_type' => 'gasoline']);
+
+        $url = 'reports/fuel?from=2026-10-01&to=2026-10-31';
+        $this->getJson($this->api($url))->assertOk()
+            ->assertJsonPath('data.stats.fuel_liters', ['value' => 90, 'previous' => 50])
+            ->assertJsonPath('data.stats.fuel_cost', ['value' => 5400, 'previous' => 3000])
+            ->assertJsonPath('data.stats.transactions', ['value' => 3, 'previous' => 1])
+            ->assertJsonPath('data.stats.distance_km', ['value' => 700, 'previous' => null])
+            // 700 km over the 70 L bought at the two fill-ups that close a leg
+            ->assertJsonPath('data.stats.efficiency_km_per_liter', ['value' => 10, 'previous' => null])
+            ->assertJsonCount(31, 'data.daily')
+            ->assertJsonPath('data.daily.11', ['date' => '2026-10-12', 'fuel_liters' => 50, 'fuel_cost' => 3000])
+            ->assertJsonPath('data.groups.0', ['key' => (string) $truck->id, 'label' => 'TRK-001', 'liters' => 70, 'cost' => 4200, 'transactions' => 2])
+            ->assertJsonPath('data.groups.1.label', 'VAN-003')
+            ->assertJsonPath('data.fuel_types.1', ['key' => 'gasoline', 'label' => 'Gasoline', 'liters' => 20, 'cost' => 1200, 'transactions' => 1])
+            ->assertJsonPath('data.stations.0', ['key' => 'Shell, SLEX', 'label' => 'Shell, SLEX', 'liters' => 50, 'cost' => 3000, 'transactions' => 2])
+            ->assertJsonPath('data.routes', [['origin' => 'Manila', 'destination' => 'Batangas']]);
+
+        $this->getJson($this->api("{$url}&group_by=date"))->assertOk()
+            ->assertJsonPath('data.groups.0.key', '2026-10-01')
+            ->assertJsonPath('data.groups.0.label', 'Oct 1 – 7')
+            ->assertJsonPath('data.groups.1.label', 'Oct 8 – 14')
+            ->assertJsonPath('data.groups.1.liters', 50);
+        $this->getJson($this->api("{$url}&group_by=driver"))->assertJsonPath('data.groups.0.label', 'Ben Reyes');
+
+        // Filters narrow the stats; distance and efficiency follow the fill-ups that match.
+        $this->getJson($this->api($url.'&station='.urlencode('Shell, SLEX')))->assertOk()
+            ->assertJsonPath('data.stats.fuel_liters.value', 50)
+            ->assertJsonPath('data.stats.distance_km.value', 300)
+            ->assertJsonPath('data.stats.efficiency_km_per_liter.value', 10);
+        $this->getJson($this->api("{$url}&fuel_type=gasoline"))
+            ->assertJsonPath('data.stats.fuel_liters.value', 20)
+            ->assertJsonPath('data.stats.efficiency_km_per_liter.value', null);
+        $this->getJson($this->api("{$url}&route_origin=Manila&route_destination=Batangas"))->assertJsonPath('data.stats.fuel_liters.value', 40);
+        $this->getJson($this->api("{$url}&payment_method=fuel_card&driver_id={$ben->id}"))->assertJsonPath('data.stats.fuel_liters.value', 30);
+
+        // The transaction list takes the same filters.
+        $this->getJson($this->api('fuel-records?station='.urlencode('Shell, SLEX')))->assertJsonCount(2, 'data');
+        $this->getJson($this->api('fuel-records?payment_method=cash'))->assertJsonCount(1, 'data');
+        $this->getJson($this->api('fuel-records?route_origin=Manila&route_destination=Batangas'))->assertJsonCount(1, 'data');
+        $this->getJson($this->api('fuel-records?sort=-odometer_km'))->assertJsonPath('data.0.odometer_km', 10_700);
+
+        $this->getJson($this->api("{$url}&group_by=week&fuel_type=jet&route_origin=Manila"))
+            ->assertStatus(422)->assertJsonValidationErrors(['group_by', 'fuel_type', 'route_destination']);
     }
 
     public function test_overview_validates_the_period(): void
