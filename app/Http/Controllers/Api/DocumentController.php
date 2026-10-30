@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\BusinessRuleException;
 use App\Http\Controllers\Concerns\ListsResources;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\DocumentRequest;
+use App\Http\Resources\DocumentFileResource;
 use App\Http\Resources\DriverDocumentResource;
 use App\Http\Resources\VehicleDocumentResource;
+use App\Models\DocumentFile;
 use App\Models\DriverDocument;
 use App\Models\VehicleDocument;
 use App\Services\DocumentService;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -38,8 +40,8 @@ class DocumentController extends Controller
         $ownerType = $request->query('owner_type') === 'driver' ? 'driver' : 'vehicle';
         [$model, $resource, $relation, $ownerLabel] = self::OWNERS[$ownerType];
 
-        $query = $model::query()->with([$relation, 'uploader']);
-        $this->applySearch($query, $request, ['title', 'document_number', 'original_name', "{$relation}.{$ownerLabel}"]);
+        $query = $model::query()->with([$relation, 'uploader', 'files']);
+        $this->applySearch($query, $request, ['title', 'document_number', 'issuing_authority', 'files.original_name', "{$relation}.{$ownerLabel}"]);
         $this->applyFilters($query, $request, ['document_type', 'owner_id' => "{$relation}_id"]);
 
         $today = now()->toDateString();
@@ -64,19 +66,19 @@ class DocumentController extends Controller
 
         $document = DB::transaction(function () use ($request, $model, $relation, $ownerType) {
             $document = $model::create([
-                ...collect($request->validated())->except(['owner_type', 'owner_id', 'file'])->all(),
+                ...collect($request->validated())->except(['owner_type', 'owner_id', 'files'])->all(),
                 "{$relation}_id" => $request->integer('owner_id'),
                 'uploaded_by' => $request->user()->id,
             ]);
 
-            if ($request->hasFile('file')) {
-                $this->documents->attachFile($document, $request->file('file'), $ownerType.'s');
+            foreach ($request->file('files', []) as $file) {
+                $this->documents->addFile($document, $file, $ownerType.'s', $request->user()->id);
             }
 
             return $document;
         });
 
-        return $resource::make($document->load([$relation, 'uploader']))
+        return $resource::make($document->load([$relation, 'uploader', 'files']))
             ->additional(['message' => 'Document saved.'])
             ->response()->setStatusCode(201);
     }
@@ -85,7 +87,7 @@ class DocumentController extends Controller
     {
         [, $resource, $relation] = self::OWNERS[$ownerType];
 
-        return $resource::make($this->find($ownerType, $id)->load([$relation, 'uploader']));
+        return $resource::make($this->find($ownerType, $id)->load([$relation, 'uploader', 'files']));
     }
 
     public function update(DocumentRequest $request, string $ownerType, int $id): JsonResource
@@ -93,17 +95,48 @@ class DocumentController extends Controller
         [, $resource, $relation] = self::OWNERS[$ownerType];
         $document = $this->find($ownerType, $id);
 
-        $document->update(collect($request->validated())->except('file')->all());
-        if ($request->hasFile('file')) {
-            $this->documents->attachFile($document, $request->file('file'), $ownerType.'s');
+        $files = $request->file('files', []);
+        $this->ensureRoomFor($document, count($files));
+
+        $document->update(collect($request->validated())->except('files')->all());
+        foreach ($files as $file) {
+            $this->documents->addFile($document, $file, $ownerType.'s', $request->user()->id);
         }
 
-        return $resource::make($document->load([$relation, 'uploader']))->additional(['message' => 'Document updated.']);
+        return $resource::make($document->load([$relation, 'uploader', 'files']))->additional(['message' => 'Document updated.']);
     }
 
+    /** Downloads the document's first file (kept for older links; see showFile for each file). */
     public function download(string $ownerType, int $id): StreamedResponse
     {
-        return $this->documents->download($this->find($ownerType, $id));
+        $file = $this->find($ownerType, $id)->files()->first();
+        abort_unless($file, 404, 'No file has been uploaded for this document.');
+
+        return $this->documents->serve($file, download: true);
+    }
+
+    /** Adds one file. The upload page sends files one at a time so each one is confirmed on its own. */
+    public function storeFile(Request $request, string $ownerType, int $id): JsonResponse
+    {
+        $request->validate(['file' => ['required', ...DocumentRequest::FILE_RULES]], collect(DocumentRequest::FILE_MESSAGES)->mapWithKeys(fn ($m, $rule) => ["file.{$rule}" => $m])->all());
+
+        $document = $this->find($ownerType, $id);
+        $this->ensureRoomFor($document, 1);
+        $file = $this->documents->addFile($document, $request->file('file'), $ownerType.'s', $request->user()->id);
+
+        return DocumentFileResource::make($file)->additional(['message' => 'File uploaded.'])->response()->setStatusCode(201);
+    }
+
+    public function showFile(Request $request, string $ownerType, int $id, int $fileId): StreamedResponse
+    {
+        return $this->documents->serve($this->findFile($ownerType, $id, $fileId), $request->boolean('download'));
+    }
+
+    public function destroyFile(string $ownerType, int $id, int $fileId): JsonResponse
+    {
+        $this->documents->removeFile($this->findFile($ownerType, $id, $fileId));
+
+        return response()->json(['message' => 'File removed.']);
     }
 
     public function destroy(string $ownerType, int $id): JsonResponse
@@ -113,8 +146,20 @@ class DocumentController extends Controller
         return response()->json(['message' => 'Document deleted.']);
     }
 
-    private function find(string $ownerType, int $id): Model
+    private function find(string $ownerType, int $id): VehicleDocument|DriverDocument
     {
         return self::OWNERS[$ownerType][0]::findOrFail($id);
+    }
+
+    private function findFile(string $ownerType, int $id, int $fileId): DocumentFile
+    {
+        return $this->find($ownerType, $id)->files()->findOrFail($fileId);
+    }
+
+    private function ensureRoomFor(VehicleDocument|DriverDocument $document, int $adding): void
+    {
+        if ($adding && $document->files()->count() + $adding > DocumentService::MAX_FILES) {
+            throw BusinessRuleException::withField('file', 'A document can have up to '.DocumentService::MAX_FILES.' files. Remove one first.');
+        }
     }
 }

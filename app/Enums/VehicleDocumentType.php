@@ -7,6 +7,7 @@ enum VehicleDocumentType: string
     use HasOptions;
 
     case Registration = 'registration';
+    case OfficialReceipt = 'official_receipt';
     case Insurance = 'insurance';
     case Permit = 'permit';
     case Inspection = 'inspection';

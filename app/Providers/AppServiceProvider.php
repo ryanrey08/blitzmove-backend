@@ -2,12 +2,15 @@
 
 namespace App\Providers;
 
+use App\Models\DriverDocument;
 use App\Models\User;
+use App\Models\VehicleDocument;
 use App\Services\Routing\MapboxRoutingProvider;
 use App\Services\Routing\NullRoutingProvider;
 use App\Services\Routing\RoutingProvider;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -32,6 +35,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Relation::morphMap(['vehicle_document' => VehicleDocument::class, 'driver_document' => DriverDocument::class]);
+
         Gate::define('manage-operations', fn (User $user) => $user->canManageOperations());
         Gate::define('manage-fleet', fn (User $user) => $user->canManageFleet());
 

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
+use App\Models\DocumentFile;
 use App\Models\Driver;
 use App\Models\FuelRecord;
 use App\Models\Vehicle;
@@ -94,31 +95,63 @@ class FuelAndDocumentTest extends TestCase
 
         $response = $this->post($this->api('documents'), [
             'owner_type' => 'vehicle', 'owner_id' => $vehicle->id, 'document_type' => 'registration',
-            'title' => 'OR/CR', 'expires_at' => now()->addDays(10)->toDateString(),
-            'file' => UploadedFile::fake()->create('orcr.pdf', 120, 'application/pdf'),
+            'title' => 'Certificate of Registration', 'document_number' => 'CR-2023-00123', 'issuing_authority' => 'LTO',
+            'issued_at' => now()->subYear()->toDateString(), 'expires_at' => now()->addDays(10)->toDateString(),
+            'files' => [
+                UploadedFile::fake()->create('cr.pdf', 120, 'application/pdf'),
+                UploadedFile::fake()->create('cr-back.jpg', 200, 'image/jpeg'),
+            ],
         ], ['Accept' => 'application/json'])->assertCreated()
             ->assertJsonPath('data.expiry_status', 'expiring_soon')
+            ->assertJsonPath('data.issuing_authority', 'LTO')
             ->assertJsonPath('data.has_file', true)
-            ->assertJsonPath('data.original_name', 'orcr.pdf');
+            ->assertJsonPath('data.files_count', 2)
+            ->assertJsonPath('data.files.0.original_name', 'cr.pdf');
 
         $id = $response->json('data.id');
-        $path = VehicleDocument::find($id)->file_path;
-        Storage::disk('local')->assertExists($path);
+        $first = DocumentFile::findOrFail($response->json('data.files.0.id'));
+        Storage::disk('local')->assertExists($first->file_path);
 
-        $this->get($this->api("documents/vehicle/{$id}/download"))->assertOk()->assertDownload('orcr.pdf');
+        $this->get($this->api("documents/vehicle/{$id}/download"))->assertOk()->assertDownload('cr.pdf');
+        $this->get($this->api($response->json('data.files.1.path')))->assertOk();
+        $this->get($this->api($response->json('data.files.0.path').'?download=1'))->assertOk()->assertDownload('cr.pdf');
 
-        // Replace the file via method spoofing (multipart PUT)
-        $this->post($this->api("documents/vehicle/{$id}"), [
-            '_method' => 'PUT', 'title' => 'OR/CR 2027',
-            'file' => UploadedFile::fake()->create('orcr-2027.pdf', 80, 'application/pdf'),
-        ], ['Accept' => 'application/json'])->assertOk()->assertJsonPath('data.original_name', 'orcr-2027.pdf');
-        Storage::disk('local')->assertMissing($path);
+        // Add one more file on its own, then remove the first one.
+        $this->post($this->api("documents/vehicle/{$id}/files"), ['file' => UploadedFile::fake()->create('cr-2027.pdf', 80, 'application/pdf')], ['Accept' => 'application/json'])
+            ->assertCreated()->assertJsonPath('data.original_name', 'cr-2027.pdf');
+        $this->deleteJson($this->api("documents/vehicle/{$id}/files/{$first->id}"))->assertOk();
+        Storage::disk('local')->assertMissing($first->file_path);
+        $this->getJson($this->api("documents/vehicle/{$id}"))->assertJsonPath('data.files_count', 2)->assertJsonPath('data.files.1.original_name', 'cr-2027.pdf');
 
+        // Edit details via method spoofing (multipart PUT)
+        $this->post($this->api("documents/vehicle/{$id}"), ['_method' => 'PUT', 'title' => 'CR 2027'], ['Accept' => 'application/json'])
+            ->assertOk()->assertJsonPath('data.title', 'CR 2027');
+
+        $this->getJson($this->api('documents?owner_type=vehicle&search=LTO'))->assertJsonCount(1, 'data');
         $this->getJson($this->api('documents?owner_type=vehicle&expiry_status=expiring_soon'))->assertJsonCount(1, 'data');
         $this->getJson($this->api('documents?owner_type=vehicle&expiry_status=expired'))->assertJsonCount(0, 'data');
 
         $this->deleteJson($this->api("documents/vehicle/{$id}"))->assertOk();
         $this->getJson($this->api("documents/vehicle/{$id}"))->assertNotFound();
+    }
+
+    public function test_document_files_are_validated_and_scoped_to_their_document(): void
+    {
+        Storage::fake('local');
+        $this->actingAsRole(UserRole::Dispatcher);
+        $a = VehicleDocument::create(['vehicle_id' => Vehicle::factory()->create()->id, 'document_type' => 'permit', 'title' => 'Permit A']);
+        $b = VehicleDocument::create(['vehicle_id' => Vehicle::factory()->create()->id, 'document_type' => 'permit', 'title' => 'Permit B']);
+
+        $this->post($this->api("documents/vehicle/{$a->id}/files"), ['file' => UploadedFile::fake()->create('big.pdf', 11000, 'application/pdf')], ['Accept' => 'application/json'])
+            ->assertStatus(422)->assertJsonPath('errors.file.0', 'Each file can be up to 10 MB.');
+        $this->post($this->api("documents/vehicle/{$a->id}/files"), ['file' => UploadedFile::fake()->create('sheet.docx', 10)], ['Accept' => 'application/json'])
+            ->assertStatus(422)->assertJsonPath('errors.file.0', 'Files must be PDF, JPG or PNG.');
+
+        $fileId = $this->post($this->api("documents/vehicle/{$a->id}/files"), ['file' => UploadedFile::fake()->create('permit.png', 50, 'image/png')], ['Accept' => 'application/json'])
+            ->assertCreated()->json('data.id');
+        $this->get($this->api("documents/vehicle/{$b->id}/files/{$fileId}"), ['Accept' => 'application/json'])->assertNotFound();
+        $this->deleteJson($this->api("documents/vehicle/{$b->id}/files/{$fileId}"))->assertNotFound();
+        $this->get($this->api("documents/driver/{$a->id}/files/{$fileId}"), ['Accept' => 'application/json'])->assertNotFound();
     }
 
     public function test_driver_documents_validate_type_and_file(): void
@@ -129,8 +162,8 @@ class FuelAndDocumentTest extends TestCase
 
         $this->post($this->api('documents'), [
             'owner_type' => 'driver', 'owner_id' => $driver->id, 'document_type' => 'registration', 'title' => 'Wrong type',
-            'file' => UploadedFile::fake()->create('virus.exe', 10),
-        ], ['Accept' => 'application/json'])->assertStatus(422)->assertJsonValidationErrors(['document_type', 'file']);
+            'files' => [UploadedFile::fake()->create('virus.exe', 10)],
+        ], ['Accept' => 'application/json'])->assertStatus(422)->assertJsonValidationErrors(['document_type', 'files.0']);
 
         $this->postJson($this->api('documents'), [
             'owner_type' => 'driver', 'owner_id' => $driver->id, 'document_type' => 'license', 'title' => 'License',

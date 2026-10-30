@@ -65,6 +65,7 @@ Route::prefix('v1')->group(function () {
         Route::get('documents', [DocumentController::class, 'index']);
         Route::get('documents/{ownerType}/{id}', [DocumentController::class, 'show'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
         Route::get('documents/{ownerType}/{id}/download', [DocumentController::class, 'download'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
+        Route::get('documents/{ownerType}/{id}/files/{fileId}', [DocumentController::class, 'showFile'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber(['id', 'fileId']);
 
         Route::get('routing/status', [RoutingController::class, 'status']);
         Route::post('routing/preview', [RoutingController::class, 'preview'])->middleware('throttle:60,1');
@@ -99,6 +100,8 @@ Route::prefix('v1')->group(function () {
             Route::post('documents', [DocumentController::class, 'store']);
             Route::match(['put', 'patch'], 'documents/{ownerType}/{id}', [DocumentController::class, 'update'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
             Route::delete('documents/{ownerType}/{id}', [DocumentController::class, 'destroy'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
+            Route::post('documents/{ownerType}/{id}/files', [DocumentController::class, 'storeFile'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
+            Route::delete('documents/{ownerType}/{id}/files/{fileId}', [DocumentController::class, 'destroyFile'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber(['id', 'fileId']);
         });
 
         // Fleet master data: admin, manager

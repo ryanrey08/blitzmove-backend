@@ -7,11 +7,12 @@ use App\Models\Concerns\HasExpiryStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'vehicle_id', 'document_type', 'title', 'document_number', 'issued_at', 'expires_at',
-    'file_path', 'original_name', 'mime_type', 'file_size', 'notes', 'uploaded_by',
+    'issuing_authority', 'notes', 'uploaded_by',
 ])]
 class VehicleDocument extends Model
 {
@@ -23,7 +24,6 @@ class VehicleDocument extends Model
             'document_type' => VehicleDocumentType::class,
             'issued_at' => 'date',
             'expires_at' => 'date',
-            'file_size' => 'integer',
         ];
     }
 
@@ -35,5 +35,11 @@ class VehicleDocument extends Model
     public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
+    }
+
+    /** @return MorphMany<DocumentFile, $this> */
+    public function files(): MorphMany
+    {
+        return $this->morphMany(DocumentFile::class, 'document')->orderBy('id');
     }
 }
