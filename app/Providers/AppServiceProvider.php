@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\DriverDocument;
+use App\Models\MaintenanceRecord;
 use App\Models\User;
 use App\Models\VehicleDocument;
 use App\Services\Routing\MapboxRoutingProvider;
@@ -35,7 +36,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Relation::morphMap(['vehicle_document' => VehicleDocument::class, 'driver_document' => DriverDocument::class]);
+        Relation::morphMap(['vehicle_document' => VehicleDocument::class, 'driver_document' => DriverDocument::class, 'maintenance_record' => MaintenanceRecord::class]);
 
         Gate::define('manage-operations', fn (User $user) => $user->canManageOperations());
         Gate::define('manage-fleet', fn (User $user) => $user->canManageFleet());

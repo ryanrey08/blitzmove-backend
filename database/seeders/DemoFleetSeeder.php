@@ -6,6 +6,9 @@ use App\Enums\DriverDocumentType;
 use App\Enums\DriverStatus;
 use App\Enums\FuelType;
 use App\Enums\LicenseType;
+use App\Enums\MaintenanceCategory;
+use App\Enums\MaintenanceStatus;
+use App\Enums\MaintenanceType;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\StopStatus;
@@ -18,6 +21,7 @@ use App\Models\DispatchAssignment;
 use App\Models\Driver;
 use App\Models\DriverDocument;
 use App\Models\FuelRecord;
+use App\Models\MaintenanceRecord;
 use App\Models\Order;
 use App\Models\Trip;
 use App\Models\User;
@@ -75,6 +79,11 @@ class DemoFleetSeeder extends Seeder
     public function run(): void
     {
         if (Vehicle::withTrashed()->exists() || Order::withTrashed()->exists()) {
+            // Maintenance came later; databases seeded before it still get sample records.
+            if (! MaintenanceRecord::withTrashed()->exists() && Vehicle::exists()) {
+                $this->maintenance(Vehicle::orderBy('id')->get(), User::where('role', 'admin')->first());
+                $this->command?->info('Added demo maintenance records.');
+            }
             $this->command?->info('Fleet or order data already exists; skipping demo data.');
 
             return;
@@ -89,6 +98,7 @@ class DemoFleetSeeder extends Seeder
         $this->operations($vehicles, $drivers, $admin);
         $this->fuel($vehicles, $admin);
         $this->documents($vehicles, $drivers, $admin);
+        $this->maintenance($vehicles, $admin);
     }
 
     /** @return Collection<int, Driver> */
@@ -355,6 +365,61 @@ class DemoFleetSeeder extends Seeder
                 'payment_method' => [PaymentMethod::FuelCard, PaymentMethod::Cash, PaymentMethod::CompanyAccount][$i % 3],
                 'created_by' => $admin?->id,
             ]);
+        }
+    }
+
+    /** Past services plus upcoming, due-soon, overdue and in-progress work. */
+    private function maintenance(Collection $vehicles, ?User $admin): void
+    {
+        $types = [
+            [MaintenanceType::PreventiveMaintenance, MaintenanceCategory::Preventive, 8500],
+            [MaintenanceType::OilChange, MaintenanceCategory::Preventive, 4500],
+            [MaintenanceType::TireService, MaintenanceCategory::Preventive, 18000],
+            [MaintenanceType::BrakeService, MaintenanceCategory::Corrective, 6500],
+            [MaintenanceType::AirconService, MaintenanceCategory::Corrective, 3800],
+            [MaintenanceType::Inspection, MaintenanceCategory::Inspection, 1500],
+        ];
+        $providers = ['Isuzu Calamba Service Center', 'Fuso Sta. Rosa Service', 'Gulf Coast Truck Repair', 'In-house Garage'];
+        $mechanics = ['Rico Mendoza', 'Allan Bautista', 'Jun Villanueva', 'Noel Santos'];
+        $checklist = ['Engine oil and filter', 'Brake inspection', 'Lights and electrical', 'Tire condition and pressure', 'Transmission fluid', 'Coolant and radiator', 'Aircon check', 'General cleaning'];
+        // [days from today, status]
+        $plan = [[-150, 'completed'], [-95, 'completed'], [-60, 'completed'], [-40, 'completed'], [-25, 'completed'], [-12, 'completed'], [-5, 'completed'], [-2, 'completed'],
+            [-6, 'scheduled'], [-3, 'scheduled'], [-1, 'in_progress'], [0, 'in_progress'], [2, 'scheduled'], [4, 'scheduled'], [6, 'scheduled'],
+            [11, 'scheduled'], [18, 'scheduled'], [26, 'scheduled'], [40, 'scheduled'], [-20, 'cancelled']];
+        $active = $vehicles->filter(fn (Vehicle $v) => $v->status !== VehicleStatus::Inactive)->values();
+        $year = now()->format('Y');
+
+        foreach ($plan as $i => [$days, $status]) {
+            $vehicle = $active[$i % $active->count()];
+            [$type, $category, $cost] = $types[$i % count($types)];
+            $date = today()->addDays($days);
+            $done = $status === 'completed';
+
+            MaintenanceRecord::create([
+                'reference_number' => sprintf('MNT-%s-%04d', $year, $i + 1),
+                'vehicle_id' => $vehicle->id,
+                'service_type' => $type,
+                'category' => $category,
+                'status' => MaintenanceStatus::from($status),
+                'scheduled_date' => $date->toDateString(),
+                'service_date' => $done ? $date->toDateString() : null,
+                'odometer_km' => $done ? 40000 + $vehicle->id * 5000 + ($days + 160) * 60 : null,
+                'estimated_cost' => $cost,
+                'actual_cost' => $done ? round($cost * (0.9 + ($i % 4) * 0.07), 2) : null,
+                'service_provider' => $providers[$i % count($providers)],
+                'assigned_to' => $mechanics[$i % count($mechanics)],
+                'reminder_days' => [3, 7, 1][$i % 3],
+                'description' => "{$type->label()} for {$vehicle->plate_number}.",
+                'checklist' => array_map(fn ($item, $n) => ['item' => $item, 'done' => $done || ($status === 'in_progress' && $n < 3)], $checklist, array_keys($checklist)),
+                'parts' => $type === MaintenanceType::OilChange ? [['name' => 'Engine oil (L)', 'quantity' => 7, 'unit_cost' => 420], ['name' => 'Oil filter', 'quantity' => 1, 'unit_cost' => 650]] : [],
+                'started_at' => in_array($status, ['in_progress', 'completed'], true) ? $date->copy()->setTime(8, 0) : null,
+                'completed_at' => $done ? $date->copy()->setTime(16, 0) : null,
+                'created_by' => $admin?->id,
+                'created_at' => $date->copy()->subDays(14),
+            ]);
+            if ($status === 'in_progress' && $vehicle->status === VehicleStatus::Available) {
+                $vehicle->update(['status' => VehicleStatus::Maintenance]);
+            }
         }
     }
 

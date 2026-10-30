@@ -92,6 +92,11 @@ class Vehicle extends Model
         return $this->hasMany(FuelRecord::class);
     }
 
+    public function maintenanceRecords(): HasMany
+    {
+        return $this->hasMany(MaintenanceRecord::class);
+    }
+
     public function locations(): HasMany
     {
         return $this->hasMany(VehicleLocation::class);

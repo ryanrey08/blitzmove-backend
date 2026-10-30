@@ -11,7 +11,6 @@ class DocumentFileResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $owner = $this->document_type === 'driver_document' ? 'driver' : 'vehicle';
 
         return [
             'id' => $this->id,
@@ -19,7 +18,11 @@ class DocumentFileResource extends JsonResource
             'mime_type' => $this->mime_type,
             'file_size' => $this->file_size,
             // Served through the API (private disk); relative so clients prefix their own API base. Add ?download=1 to save it.
-            'path' => "documents/{$owner}/{$this->document_id}/files/{$this->id}",
+            'path' => match ($this->document_type) {
+                'maintenance_record' => "maintenance-records/{$this->document_id}/files/{$this->id}",
+                'driver_document' => "documents/driver/{$this->document_id}/files/{$this->id}",
+                default => "documents/vehicle/{$this->document_id}/files/{$this->id}",
+            },
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

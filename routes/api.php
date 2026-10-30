@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\DriverController;
 use App\Http\Controllers\Api\FuelRecordController;
 use App\Http\Controllers\Api\GpsController;
+use App\Http\Controllers\Api\MaintenanceRecordController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\OrderController;
@@ -62,6 +63,12 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('fuel-records', FuelRecordController::class)->only(['index', 'show']);
         Route::get('fuel-records/{fuel_record}/receipt', [FuelRecordController::class, 'receipt']);
 
+        Route::get('maintenance-records/summary', [MaintenanceRecordController::class, 'summary']);
+        Route::get('maintenance-records/next-number', [MaintenanceRecordController::class, 'nextNumber']);
+        Route::get('maintenance-records/options', [MaintenanceRecordController::class, 'options']);
+        Route::apiResource('maintenance-records', MaintenanceRecordController::class)->only(['index', 'show']);
+        Route::get('maintenance-records/{maintenance_record}/files/{file}', [MaintenanceRecordController::class, 'showFile'])->whereNumber('file');
+
         Route::get('documents', [DocumentController::class, 'index']);
         Route::get('documents/{ownerType}/{id}', [DocumentController::class, 'show'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
         Route::get('documents/{ownerType}/{id}/download', [DocumentController::class, 'download'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
@@ -96,6 +103,10 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('fuel-records', FuelRecordController::class)->only(['store', 'update', 'destroy']);
             Route::post('fuel-records/{fuel_record}/receipt', [FuelRecordController::class, 'storeReceipt']);
             Route::delete('fuel-records/{fuel_record}/receipt', [FuelRecordController::class, 'destroyReceipt']);
+
+            Route::apiResource('maintenance-records', MaintenanceRecordController::class)->only(['store', 'update', 'destroy']);
+            Route::post('maintenance-records/{maintenance_record}/files', [MaintenanceRecordController::class, 'storeFile']);
+            Route::delete('maintenance-records/{maintenance_record}/files/{file}', [MaintenanceRecordController::class, 'destroyFile'])->whereNumber('file');
 
             Route::post('documents', [DocumentController::class, 'store']);
             Route::match(['put', 'patch'], 'documents/{ownerType}/{id}', [DocumentController::class, 'update'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');

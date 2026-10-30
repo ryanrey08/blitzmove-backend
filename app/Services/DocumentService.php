@@ -4,13 +4,14 @@ namespace App\Services;
 
 use App\Models\DocumentFile;
 use App\Models\DriverDocument;
+use App\Models\MaintenanceRecord;
 use App\Models\VehicleDocument;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-/** Stores fleet document files on the private disk; files are only served through the API. */
+/** Stores fleet document (and maintenance attachment) files on the private disk; files are only served through the API. */
 class DocumentService
 {
     public const DISK = 'local';
@@ -18,7 +19,7 @@ class DocumentService
     /** Files a single document can hold. */
     public const MAX_FILES = 20;
 
-    public function addFile(VehicleDocument|DriverDocument $document, UploadedFile $file, string $folder, ?int $userId): DocumentFile
+    public function addFile(VehicleDocument|DriverDocument|MaintenanceRecord $document, UploadedFile $file, string $folder, ?int $userId): DocumentFile
     {
         $path = $file->store("documents/{$folder}", self::DISK);
         abort_unless($path, 500, 'The file could not be stored. Please try again.');
