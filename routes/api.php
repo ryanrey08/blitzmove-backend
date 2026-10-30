@@ -79,6 +79,8 @@ Route::prefix('v1')->group(function () {
         Route::post('routing/plan', [RoutingController::class, 'plan'])->middleware('throttle:30,1');
         Route::get('gps/vehicles', [GpsController::class, 'index']);
         Route::post('gps/map', [GpsController::class, 'map'])->middleware('throttle:60,1');
+        Route::post('gps/viewport', [GpsController::class, 'viewport'])->middleware('throttle:60,1');
+        Route::get('gps/fleet-trend', [GpsController::class, 'fleetTrend']);
         Route::get('gps/events', [GpsController::class, 'events']);
         Route::get('gps/vehicles/{vehicle}/history', [GpsController::class, 'history']);
         Route::get('gps/vehicles/{vehicle}/track', [GpsController::class, 'track']);

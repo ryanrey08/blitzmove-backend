@@ -33,6 +33,11 @@ class NullRoutingProvider implements RoutingProvider
         return null;
     }
 
+    public function viewportImage(array $viewport, string $style = 'streets', bool $traffic = false, array $markers = []): ?string
+    {
+        return null;
+    }
+
     public function placeName(float $lat, float $lng): ?string
     {
         return null;

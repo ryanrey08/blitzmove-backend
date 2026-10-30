@@ -10,6 +10,8 @@ use App\Models\Trip;
 use App\Models\TripStop;
 use App\Models\Vehicle;
 use App\Models\VehicleLocation;
+use App\Services\MonitoringService;
+use App\Services\Routing\MapViewport;
 use App\Services\Routing\RoutingProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -71,6 +73,56 @@ class GpsController extends Controller
         return response()->json(['data' => [
             'image' => $routing->isConfigured() ? $routing->fleetImage($markers, $data['style'] ?? 'streets', (bool) ($data['traffic'] ?? false)) : null,
             'plotted' => count($markers),
+        ]]);
+    }
+
+    /**
+     * Fleet map without pins, at a known center and zoom, so the client can draw its own markers and
+     * labels over the picture. Without lng/lat/zoom the view fits the last reported positions of
+     * `vehicle_ids` (inside `padding`: top, right, bottom, left); pass them to zoom or re-center. Positions always come from the database.
+     */
+    public function viewport(Request $request, RoutingProvider $routing): JsonResponse
+    {
+        $data = $request->validate([
+            'vehicle_ids' => ['present', 'array', 'max:200'],
+            'vehicle_ids.*' => ['integer'],
+            'lng' => ['nullable', 'numeric', 'between:-180,180', 'required_with:lat,zoom'],
+            'lat' => ['nullable', 'numeric', 'between:-85,85', 'required_with:lng,zoom'],
+            'zoom' => ['nullable', 'numeric', 'between:'.MapViewport::MIN_ZOOM.','.MapViewport::MAX_ZOOM, 'required_with:lng,lat'],
+            'width' => ['sometimes', 'integer', 'between:320,1280'],
+            'height' => ['sometimes', 'integer', 'between:240,1280'],
+            'style' => ['sometimes', 'in:streets,satellite'],
+            'traffic' => ['sometimes', 'boolean'],
+            'padding' => ['sometimes', 'array', 'size:4'],
+            'padding.*' => ['integer', 'between:0,400'],
+        ]);
+        $width = (int) ($data['width'] ?? 900);
+        $height = (int) ($data['height'] ?? 560);
+
+        if (isset($data['zoom'])) {
+            $view = MapViewport::make((float) $data['lng'], (float) $data['lat'], (float) $data['zoom'], $width, $height);
+        } else {
+            $points = VehicleLocation::query()
+                ->whereIn('id', VehicleLocation::query()->selectRaw('max(id)')->whereIn('vehicle_id', $data['vehicle_ids'])->groupBy('vehicle_id'))
+                ->get()->map(fn (VehicleLocation $l) => ['lat' => $l->latitude, 'lng' => $l->longitude])->all();
+            [$lng, $lat] = array_map('floatval', explode(',', (string) config('services.mapbox.proximity', '121.0,14.6')));
+            $view = MapViewport::fit($points, $width, $height, ['lng' => $lng, 'lat' => $lat], padding: array_map('intval', array_values($data['padding'] ?? [60, 60, 60, 60])));
+        }
+
+        return response()->json(['data' => [
+            'image' => $routing->isConfigured() ? $routing->viewportImage($view, $data['style'] ?? 'streets', (bool) ($data['traffic'] ?? false)) : null,
+            'viewport' => $view,
+        ]]);
+    }
+
+    /** Fleet status counts now and at the same time last month (see MonitoringService::fleetSnapshot). */
+    public function fleetTrend(MonitoringService $monitoring): JsonResponse
+    {
+        $now = now();
+
+        return response()->json(['data' => [
+            'now' => $monitoring->fleetSnapshot($now),
+            'last_month' => $monitoring->fleetSnapshot($now->copy()->subMonthNoOverflow()),
         ]]);
     }
 

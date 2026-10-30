@@ -55,6 +55,15 @@ interface RoutingProvider
      */
     public function fleetImage(array $markers, string $style = 'streets', bool $traffic = false): ?string;
 
+    /**
+     * Map at an exact viewport (see MapViewport), so a client can draw its own markers over it.
+     * Pins are drawn only when $markers is not empty. Returns null when no map provider is configured.
+     *
+     * @param  array{lng: float, lat: float, zoom: float, width: int, height: int}  $viewport
+     * @param  list<array{lat: float, lng: float, label: string, color: string}>  $markers
+     */
+    public function viewportImage(array $viewport, string $style = 'streets', bool $traffic = false, array $markers = []): ?string;
+
     /** Short place name for a coordinate (e.g. "SLEX, Calamba, Laguna"), or null. */
     public function placeName(float $lat, float $lng): ?string;
 }

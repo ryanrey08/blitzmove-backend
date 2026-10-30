@@ -277,11 +277,7 @@ class MapboxRoutingProvider implements RoutingProvider
 
     public function fleetImage(array $markers, string $style = 'streets', bool $traffic = false): ?string
     {
-        $styleId = match (true) {
-            $style === 'satellite' => 'satellite-streets-v12',
-            $traffic => 'navigation-day-v1', // includes live traffic
-            default => 'streets-v12',
-        };
+        $styleId = $this->styleId($style, $traffic);
         $pins = collect($markers)->map(fn ($m) => sprintf('pin-l-%s+%s(%F,%F)', strtolower($m['label']), ltrim($m['color'], '#'), $m['lng'], $m['lat']))->implode(',');
         // Without positions, show the service area (default proximity) instead of failing.
         [$lng, $lat] = array_map('floatval', explode(',', (string) config('services.mapbox.proximity', '121.0,14.6')));
@@ -292,6 +288,26 @@ class MapboxRoutingProvider implements RoutingProvider
         $response = $this->http(throw: false)->get("styles/v1/mapbox/{$styleId}/static/{$path}/900x560@2x", count($markers) > 1 ? ['padding' => '60,60,60,200'] : []);
 
         return $response->successful() ? 'data:image/png;base64,'.base64_encode($response->body()) : null;
+    }
+
+    public function viewportImage(array $viewport, string $style = 'streets', bool $traffic = false, array $markers = []): ?string
+    {
+        $pins = collect($markers)->map(fn ($m) => sprintf('pin-l-%s+%s(%F,%F)', strtolower($m['label']), ltrim($m['color'], '#'), $m['lng'], $m['lat']))->implode(',');
+        $position = sprintf('%F,%F,%s', $viewport['lng'], $viewport['lat'], $viewport['zoom']);
+        $path = $pins !== '' ? "{$pins}/{$position}" : $position;
+
+        $response = $this->http(throw: false)->get(sprintf('styles/v1/mapbox/%s/static/%s/%dx%d@2x', $this->styleId($style, $traffic), $path, $viewport['width'], $viewport['height']));
+
+        return $response->successful() ? 'data:image/png;base64,'.base64_encode($response->body()) : null;
+    }
+
+    private function styleId(string $style, bool $traffic): string
+    {
+        return match (true) {
+            $style === 'satellite' => 'satellite-streets-v12',
+            $traffic => 'navigation-day-v1', // includes live traffic
+            default => 'streets-v12',
+        };
     }
 
     public function placeName(float $lat, float $lng): ?string
