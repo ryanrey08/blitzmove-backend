@@ -64,9 +64,10 @@ class ReportTest extends TestCase
             ->assertJsonPath('data.stats.fuel_liters', ['value' => 90, 'previous' => 50])
             ->assertJsonPath('data.stats.total_trips', ['value' => 4, 'previous' => 1])
             ->assertJsonPath('data.stats.on_time_rate', ['value' => 50, 'previous' => 100])
-            ->assertJsonPath('data.trip_status.0', ['key' => 'completed', 'label' => 'Completed', 'count' => 2])
-            ->assertJsonPath('data.trip_status.1.count', 1)
-            ->assertJsonPath('data.trip_status.3.count', 1)
+            ->assertJsonPath('data.trip_status.0', ['key' => 'delivered', 'label' => 'Delivered', 'count' => 2])
+            ->assertJsonPath('data.trip_status.1.count', 0)
+            ->assertJsonPath('data.trip_status.3', ['key' => 'delayed', 'label' => 'Delayed', 'count' => 1])
+            ->assertJsonPath('data.trip_status.4.count', 1)
             ->assertJsonCount(31, 'data.daily')
             ->json('data');
 
@@ -117,7 +118,7 @@ class ReportTest extends TestCase
         $report = $this->postJson($this->api('reports'), [
             'name' => 'October Fleet Utilization', 'type' => 'fleet', 'from' => '2026-10-01', 'to' => '2026-10-31',
         ])->assertCreated()
-            ->assertJsonPath('data.type_label', 'Fleet Utilization')
+            ->assertJsonPath('data.type_label', 'Fleet')
             ->assertJsonPath('data.period_from', '2026-10-01')
             ->assertJsonPath('data.generated_by.name', $user->name)
             ->json('data');

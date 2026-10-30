@@ -2,7 +2,7 @@
 
 namespace App\Enums;
 
-/** What a generated report is about ("Type" in the Report List). */
+/** What a generated report is about ("Type" in the Report List; delivery reports are listed as "Orders"). */
 enum ReportType: string
 {
     use HasOptions;
@@ -19,9 +19,8 @@ enum ReportType: string
     public function label(): string
     {
         return match ($this) {
-            self::Fleet => 'Fleet Utilization',
             self::Trips => 'Trips',
-            self::Delivery => 'Orders / Delivery',
+            self::Delivery => 'Orders',
             default => ucfirst($this->value),
         };
     }

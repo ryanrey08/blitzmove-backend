@@ -149,17 +149,22 @@ class ReportService
         })->values()->all();
     }
 
-    /** Trips departing in the period, bucketed for the donut. */
+    /**
+     * Trips departing in the period, bucketed for the donut: Delivered = completed; In Transit = dispatched or
+     * in progress and not yet past the estimated arrival; Delayed = dispatched or in progress past it;
+     * Pending = scheduled; Cancelled.
+     */
     private function tripStatus(CarbonImmutable $start, CarbonImmutable $end, array $filters): array
     {
-        $counts = $this->trips($start, $end, $filters)->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
-        $sum = fn (TripStatus ...$statuses) => (int) collect($statuses)->sum(fn (TripStatus $s) => $counts[$s->value] ?? 0);
+        $count = fn (TripStatus ...$statuses) => $this->trips($start, $end, $filters)->whereIn('status', $statuses);
+        $active = fn () => $count(...TripStatus::active());
 
         return [
-            ['key' => 'completed', 'label' => 'Completed', 'count' => $sum(TripStatus::Completed)],
-            ['key' => 'in_transit', 'label' => 'In Transit', 'count' => $sum(TripStatus::Dispatched, TripStatus::InProgress)],
-            ['key' => 'scheduled', 'label' => 'Scheduled', 'count' => $sum(TripStatus::Scheduled)],
-            ['key' => 'cancelled', 'label' => 'Cancelled', 'count' => $sum(TripStatus::Cancelled)],
+            ['key' => 'delivered', 'label' => 'Delivered', 'count' => $count(TripStatus::Completed)->count()],
+            ['key' => 'in_transit', 'label' => 'In Transit', 'count' => $active()->where('estimated_arrival_at', '>=', now())->count()],
+            ['key' => 'pending', 'label' => 'Pending', 'count' => $count(TripStatus::Scheduled)->count()],
+            ['key' => 'delayed', 'label' => 'Delayed', 'count' => $active()->where('estimated_arrival_at', '<', now())->count()],
+            ['key' => 'cancelled', 'label' => 'Cancelled', 'count' => $count(TripStatus::Cancelled)->count()],
         ];
     }
 
