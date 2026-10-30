@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\FuelType;
+use App\Enums\PaymentMethod;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -23,9 +24,11 @@ class FuelRecordRequest extends FormRequest
             'fuel_type' => [$this->required(), Rule::enum(FuelType::class)],
             'liters' => [$this->required(), 'numeric', 'gt:0', 'max:10000'],
             'price_per_liter' => [$this->required(), 'numeric', 'gt:0', 'max:10000'],
+            'payment_method' => ['nullable', Rule::enum(PaymentMethod::class)],
             'odometer_km' => ['nullable', 'integer', 'min:0', 'max:10000000'],
             'station' => ['nullable', 'string', 'max:255'],
             'receipt_number' => ['nullable', 'string', 'max:60'],
+            'reference_number' => ['nullable', 'string', 'max:60'],
             'notes' => ['nullable', 'string', 'max:255'],
         ];
     }

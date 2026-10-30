@@ -7,10 +7,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\FuelRecordRequest;
 use App\Http\Resources\FuelRecordResource;
 use App\Models\FuelRecord;
+use App\Models\Vehicle;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FuelRecordController extends Controller
 {
@@ -41,10 +45,15 @@ class FuelRecordController extends Controller
 
     public function store(FuelRecordRequest $request): JsonResponse
     {
-        $record = FuelRecord::create([...$this->withTotal($request->validated()), 'created_by' => $request->user()->id]);
+        $record = DB::transaction(function () use ($request) {
+            $record = FuelRecord::create([...$this->withTotal($request->validated()), 'created_by' => $request->user()->id]);
+            $this->syncOdometer($record);
+
+            return $record;
+        });
 
         return FuelRecordResource::make($record->load(['vehicle', 'driver', 'trip']))
-            ->additional(['message' => 'Fuel record saved.'])
+            ->additional(['message' => 'Fuel transaction saved.'])
             ->response()->setStatusCode(201);
     }
 
@@ -57,9 +66,53 @@ class FuelRecordController extends Controller
     {
         $fuelRecord->fill($request->validated());
         $fuelRecord->total_cost = round($fuelRecord->liters * $fuelRecord->price_per_liter, 2);
-        $fuelRecord->save();
+        DB::transaction(function () use ($fuelRecord) {
+            $fuelRecord->save();
+            $this->syncOdometer($fuelRecord);
+        });
 
-        return FuelRecordResource::make($fuelRecord->load(['vehicle', 'driver', 'trip']))->additional(['message' => 'Fuel record updated.']);
+        return FuelRecordResource::make($fuelRecord->load(['vehicle', 'driver', 'trip']))->additional(['message' => 'Fuel transaction updated.']);
+    }
+
+    /** Stations used before, most frequent first, for the station pick-list. */
+    public function stations(): JsonResponse
+    {
+        $stations = FuelRecord::query()->whereNotNull('station')->where('station', '!=', '')
+            ->groupBy('station')->orderByRaw('count(*) desc')->orderBy('station')->limit(50)->pluck('station');
+
+        return response()->json(['data' => $stations]);
+    }
+
+    public function storeReceipt(Request $request, FuelRecord $fuelRecord): JsonResponse
+    {
+        $request->validate(
+            ['receipt' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:5120']],
+            ['receipt.max' => 'Receipt photos can be up to 5 MB.', 'receipt.mimes' => 'Receipt photos must be JPG or PNG.'],
+        );
+        $previous = $fuelRecord->receipt_path;
+        $fuelRecord->update(['receipt_path' => $request->file('receipt')->store("fuel-receipts/{$fuelRecord->id}", 'local')]);
+        if ($previous) {
+            Storage::disk('local')->delete($previous);
+        }
+
+        return response()->json(['data' => ['receipt' => "fuel-records/{$fuelRecord->id}/receipt"], 'message' => 'Receipt photo uploaded.']);
+    }
+
+    public function receipt(FuelRecord $fuelRecord): StreamedResponse
+    {
+        abort_unless($fuelRecord->receipt_path && Storage::disk('local')->exists($fuelRecord->receipt_path), 404);
+
+        return Storage::disk('local')->response($fuelRecord->receipt_path, null, ['Cache-Control' => 'private, max-age=3600']);
+    }
+
+    public function destroyReceipt(FuelRecord $fuelRecord): JsonResponse
+    {
+        if ($fuelRecord->receipt_path) {
+            Storage::disk('local')->delete($fuelRecord->receipt_path);
+            $fuelRecord->update(['receipt_path' => null]);
+        }
+
+        return response()->json(['message' => 'Receipt photo removed.']);
     }
 
     public function destroy(FuelRecord $fuelRecord): JsonResponse
@@ -72,7 +125,7 @@ class FuelRecordController extends Controller
     private function filtered(Request $request): Builder
     {
         $query = FuelRecord::query();
-        $this->applySearch($query, $request, ['station', 'receipt_number', 'vehicle.plate_number', 'driver.full_name']);
+        $this->applySearch($query, $request, ['station', 'receipt_number', 'reference_number', 'vehicle.plate_number', 'driver.full_name']);
         $this->applyFilters($query, $request, ['vehicle_id', 'driver_id', 'fuel_type']);
 
         if ($from = $request->query('from')) {
@@ -83,6 +136,16 @@ class FuelRecordController extends Controller
         }
 
         return $query;
+    }
+
+    /** A higher odometer reading moves the vehicle's odometer forward; older readings never wind it back. */
+    private function syncOdometer(FuelRecord $record): void
+    {
+        if ($record->odometer_km) {
+            Vehicle::whereKey($record->vehicle_id)
+                ->where(fn ($q) => $q->whereNull('odometer_km')->orWhere('odometer_km', '<', $record->odometer_km))
+                ->update(['odometer_km' => $record->odometer_km]);
+        }
     }
 
     private function withTotal(array $data): array

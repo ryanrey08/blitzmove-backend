@@ -58,7 +58,9 @@ Route::prefix('v1')->group(function () {
         Route::get('stops', [TripStopController::class, 'board']);
 
         Route::get('fuel-records/summary', [FuelRecordController::class, 'summary']);
+        Route::get('fuel-records/stations', [FuelRecordController::class, 'stations']);
         Route::apiResource('fuel-records', FuelRecordController::class)->only(['index', 'show']);
+        Route::get('fuel-records/{fuel_record}/receipt', [FuelRecordController::class, 'receipt']);
 
         Route::get('documents', [DocumentController::class, 'index']);
         Route::get('documents/{ownerType}/{id}', [DocumentController::class, 'show'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');
@@ -91,6 +93,8 @@ Route::prefix('v1')->group(function () {
             });
 
             Route::apiResource('fuel-records', FuelRecordController::class)->only(['store', 'update', 'destroy']);
+            Route::post('fuel-records/{fuel_record}/receipt', [FuelRecordController::class, 'storeReceipt']);
+            Route::delete('fuel-records/{fuel_record}/receipt', [FuelRecordController::class, 'destroyReceipt']);
 
             Route::post('documents', [DocumentController::class, 'store']);
             Route::match(['put', 'patch'], 'documents/{ownerType}/{id}', [DocumentController::class, 'update'])->whereIn('ownerType', ['vehicle', 'driver'])->whereNumber('id');

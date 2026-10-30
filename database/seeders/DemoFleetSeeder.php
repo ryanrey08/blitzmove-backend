@@ -7,6 +7,7 @@ use App\Enums\DriverStatus;
 use App\Enums\FuelType;
 use App\Enums\LicenseType;
 use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\StopStatus;
 use App\Enums\StopType;
 use App\Enums\TripStatus;
@@ -351,6 +352,7 @@ class DemoFleetSeeder extends Seeder
                 'odometer_km' => 40000 + $vehicle->id * 5000 + $i * 180,
                 'station' => $stations[$i % count($stations)],
                 'receipt_number' => sprintf('OR-%06d', 100200 + $i * 17),
+                'payment_method' => [PaymentMethod::FuelCard, PaymentMethod::Cash, PaymentMethod::CompanyAccount][$i % 3],
                 'created_by' => $admin?->id,
             ]);
         }

@@ -24,9 +24,13 @@ class FuelRecordResource extends JsonResource
             'liters' => (float) $this->liters,
             'price_per_liter' => (float) $this->price_per_liter,
             'total_cost' => (float) $this->total_cost,
+            'payment_method' => $this->payment_method?->value,
             'odometer_km' => $this->odometer_km,
             'station' => $this->station,
             'receipt_number' => $this->receipt_number,
+            'reference_number' => $this->reference_number,
+            // API path of the receipt photo; open it through the API client.
+            'receipt' => $this->receipt_path ? "fuel-records/{$this->id}/receipt" : null,
             'notes' => $this->notes,
             'created_at' => $this->created_at?->toIso8601String(),
         ];

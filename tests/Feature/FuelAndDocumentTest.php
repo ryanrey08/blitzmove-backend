@@ -41,6 +41,51 @@ class FuelAndDocumentTest extends TestCase
         $this->assertSoftDeleted('fuel_records', ['id' => $id]);
     }
 
+    public function test_fuel_transaction_fields_receipt_photo_and_odometer_sync(): void
+    {
+        Storage::fake('local');
+        $this->actingAsRole(UserRole::Dispatcher);
+        $vehicle = Vehicle::factory()->create(['odometer_km' => 50000]);
+
+        $id = $this->postJson($this->api('fuel-records'), [
+            'vehicle_id' => $vehicle->id, 'fueled_at' => now()->subHour()->toIso8601String(), 'fuel_type' => 'diesel',
+            'liters' => 45.5, 'price_per_liter' => 60, 'odometer_km' => 51200, 'station' => 'Shell Calamba',
+            'payment_method' => 'fuel_card', 'receipt_number' => 'OR-1', 'reference_number' => 'PO-77',
+        ])->assertCreated()
+            ->assertJsonPath('data.total_cost', 2730)
+            ->assertJsonPath('data.payment_method', 'fuel_card')
+            ->assertJsonPath('data.reference_number', 'PO-77')
+            ->assertJsonPath('data.receipt', null)
+            ->json('data.id');
+        $this->assertSame(51200, $vehicle->fresh()->odometer_km);
+
+        // An older reading never winds the vehicle's odometer back.
+        $this->postJson($this->api('fuel-records'), [
+            'vehicle_id' => $vehicle->id, 'fueled_at' => now()->subDays(3)->toIso8601String(), 'fuel_type' => 'diesel',
+            'liters' => 10, 'price_per_liter' => 60, 'odometer_km' => 49000,
+        ])->assertCreated();
+        $this->assertSame(51200, $vehicle->fresh()->odometer_km);
+
+        $this->postJson($this->api('fuel-records'), ['vehicle_id' => $vehicle->id, 'payment_method' => 'barter'])
+            ->assertStatus(422)->assertJsonValidationErrors(['payment_method']);
+
+        $this->post($this->api("fuel-records/{$id}/receipt"), ['receipt' => UploadedFile::fake()->create('receipt.pdf', 10, 'application/pdf')], ['Accept' => 'application/json'])
+            ->assertStatus(422)->assertJsonValidationErrors(['receipt']);
+        $this->post($this->api("fuel-records/{$id}/receipt"), ['receipt' => UploadedFile::fake()->create('receipt.jpg', 200, 'image/jpeg')], ['Accept' => 'application/json'])
+            ->assertOk()->assertJsonPath('data.receipt', "fuel-records/{$id}/receipt");
+        $path = FuelRecord::find($id)->receipt_path;
+        Storage::disk('local')->assertExists($path);
+        $this->get($this->api("fuel-records/{$id}/receipt"))->assertOk();
+        $this->getJson($this->api("fuel-records/{$id}"))->assertJsonPath('data.receipt', "fuel-records/{$id}/receipt");
+
+        $this->getJson($this->api('fuel-records/stations'))->assertOk()->assertJsonPath('data.0', 'Shell Calamba');
+        $this->getJson($this->api('fuel-records?search=PO-77'))->assertJsonCount(1, 'data');
+
+        $this->deleteJson($this->api("fuel-records/{$id}/receipt"))->assertOk();
+        Storage::disk('local')->assertMissing($path);
+        $this->get($this->api("fuel-records/{$id}/receipt"), ['Accept' => 'application/json'])->assertNotFound();
+    }
+
     public function test_vehicle_document_upload_download_and_expiry_status(): void
     {
         Storage::fake('local');
@@ -104,5 +149,7 @@ class FuelAndDocumentTest extends TestCase
         $this->getJson($this->api('documents'))->assertOk();
         $this->postJson($this->api('documents'), ['owner_type' => 'vehicle', 'owner_id' => $vehicle->id])->assertForbidden();
         $this->postJson($this->api('fuel-records'), [])->assertForbidden();
+        $record = FuelRecord::factory()->create(['vehicle_id' => $vehicle->id]);
+        $this->postJson($this->api("fuel-records/{$record->id}/receipt"), [])->assertForbidden();
     }
 }

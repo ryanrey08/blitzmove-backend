@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\FuelType;
+use App\Enums\PaymentMethod;
 use Database\Factories\FuelRecordFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,7 +13,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'vehicle_id', 'driver_id', 'trip_id', 'fueled_at', 'fuel_type', 'liters', 'price_per_liter',
-    'total_cost', 'odometer_km', 'station', 'receipt_number', 'notes', 'created_by',
+    'total_cost', 'payment_method', 'odometer_km', 'station', 'receipt_number', 'reference_number', 'receipt_path',
+    'notes', 'created_by',
 ])]
 class FuelRecord extends Model
 {
@@ -27,6 +29,7 @@ class FuelRecord extends Model
             'liters' => 'decimal:2',
             'price_per_liter' => 'decimal:2',
             'total_cost' => 'decimal:2',
+            'payment_method' => PaymentMethod::class,
             'odometer_km' => 'integer',
         ];
     }

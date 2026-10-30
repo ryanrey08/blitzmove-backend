@@ -24,6 +24,7 @@ class MetaController extends Controller
             'vehicle_types' => Enums\VehicleType::options(),
             'license_types' => Enums\LicenseType::options(),
             'fuel_types' => Enums\FuelType::options(),
+            'payment_methods' => Enums\PaymentMethod::options(),
             'vehicle_document_types' => Enums\VehicleDocumentType::options(),
             'driver_document_types' => Enums\DriverDocumentType::options(),
             'user_roles' => Enums\UserRole::options(),
