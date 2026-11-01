@@ -67,6 +67,9 @@ class AuthTest extends TestCase
         foreach (['auth/me', 'dashboard', 'orders', 'vehicles', 'drivers', 'trips', 'fuel-records', 'documents', 'fleet/monitoring'] as $path) {
             $this->getJson($this->api($path))->assertUnauthorized();
         }
+
+        // Clients that don't ask for JSON (scanners, curl) get a 401 too, not a redirect error.
+        $this->get($this->api('auth/me'))->assertUnauthorized();
     }
 
     public function test_logout_revokes_the_current_token(): void
