@@ -34,26 +34,28 @@ scp -q "$WORK/backend/deploy/production/docker-compose.yml" "$SERVER:/opt/blitzm
 
 ssh "$SERVER" TAG="$TAG" bash -s <<'REMOTE'
 set -euo pipefail
+umask 077
 cd /opt/blitzmove
+# Every docker command below reads from /dev/null: this script itself arrives on stdin.
 PREVIOUS=$(grep '^TAG=' .env | cut -d= -f2 || true)
 
 # Back up the database before migrating (keeps the last 14).
-if docker compose ps --status running db | grep -q db; then
+if docker compose ps --status running db </dev/null | grep -q db; then
   mkdir -p backups && chmod 700 backups
-  docker compose exec -T db sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines blitzmove' \
+  docker compose exec -T db sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines blitzmove' </dev/null \
     | gzip > "backups/blitzmove-$(date -u +%Y%m%dT%H%M%SZ)-${PREVIOUS:-none}.sql.gz"
   ls -1t backups/*.sql.gz | tail -n +15 | xargs -r rm --
 fi
 
 sed -i "s/^TAG=.*/TAG=$TAG/" .env
-docker compose up -d --wait db
-docker compose run --rm --no-deps app php artisan migrate --force --no-ansi
-docker compose up -d --remove-orphans --wait
-docker compose ps
+docker compose up -d --wait db </dev/null
+docker compose run --rm --no-deps app php artisan migrate --force --no-ansi </dev/null
+docker compose up -d --remove-orphans --wait </dev/null
+docker compose ps </dev/null
 
 # Drop older BlitzMove images (keeps the one just deployed and the previous one for rollback).
 for repo in blitzmove-app blitzmove-web blitzmove-frontend; do
-  docker images "$repo" --format '{{.Tag}}' | grep -vx -e "$TAG" -e "${PREVIOUS:-}" | xargs -r -I{} docker rmi -f "$repo:{}" >/dev/null || true
+  docker images "$repo" --format '{{.Tag}}' | grep -vx -e "$TAG" -e "${PREVIOUS:-}" | xargs -r -I{} docker rmi -f "$repo:{}" </dev/null >/dev/null || true
 done
 REMOTE
 
