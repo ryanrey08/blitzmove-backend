@@ -1,0 +1,86 @@
+# BlitzMove production stack. Lives on the server as /opt/blitzmove/docker-compose.yml next to
+# backend.env and .env (TAG, DB passwords). Images are built on a workstation by deploy.sh and loaded
+# with `docker load`; nothing is built on the server. Only 127.0.0.1 ports are published: the host
+# nginx (nginx/host-site.conf) is the single public entry point.
+name: blitzmove
+
+x-defaults: &defaults
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  db:
+    <<: *defaults
+    image: mysql:8.4
+    command:
+      - --innodb-buffer-pool-size=96M
+      - --performance-schema=OFF
+      - --max-connections=40
+      - --skip-name-resolve
+      - --host-cache-size=0
+    environment:
+      MYSQL_DATABASE: blitzmove
+      MYSQL_USER: blitzmove
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set in .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set in .env}
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    mem_limit: 450m
+
+  app:
+    <<: *defaults
+    image: blitzmove-app:${TAG:?set in .env}
+    env_file: backend.env
+    environment:
+      DB_HOST: db
+      DB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - storage:/var/www/storage
+    depends_on:
+      db: { condition: service_healthy }
+    mem_limit: 300m
+
+  scheduler:
+    <<: *defaults
+    image: blitzmove-app:${TAG}
+    command: ["php", "artisan", "schedule:work", "--no-ansi"]
+    env_file: backend.env
+    environment:
+      DB_HOST: db
+      DB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - storage:/var/www/storage
+    depends_on:
+      db: { condition: service_healthy }
+    mem_limit: 128m
+
+  web:
+    <<: *defaults
+    image: blitzmove-web:${TAG}
+    ports:
+      - "127.0.0.1:8100:80"
+    depends_on: [app]
+    mem_limit: 64m
+
+  frontend:
+    <<: *defaults
+    image: blitzmove-frontend:${TAG}
+    environment:
+      API_URL: http://web
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+    ports:
+      - "127.0.0.1:3100:3000"
+    depends_on: [web]
+    mem_limit: 256m
+
+volumes:
+  mysql:
+  storage:

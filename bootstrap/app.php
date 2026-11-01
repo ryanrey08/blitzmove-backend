@@ -15,7 +15,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // In production the API sits behind nginx and the Next.js server. Trusting only those
+        // (e.g. TRUSTED_PROXIES=172.16.0.0/12 for the Docker network) makes $request->ip() the
+        // visitor's address, so the login rate limits apply per visitor.
+        if ($proxies = env('TRUSTED_PROXIES')) {
+            $middleware->trustProxies(at: array_map('trim', explode(',', $proxies)));
+        }
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
