@@ -4,7 +4,6 @@ set -e
 cd /var/www
 php artisan config:cache --no-ansi -q
 php artisan route:cache --no-ansi -q
-php artisan view:cache --no-ansi -q
 php artisan event:cache --no-ansi -q
 chown -R www-data:www-data storage bootstrap/cache
 exec "$@"
