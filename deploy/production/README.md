@@ -1,5 +1,6 @@
 # BlitzMove production deployment
 
+Live at **https://blitzmove.blitzdev.com.ph** (API: `https://blitzmove.blitzdev.com.ph/api/v1`).
 Server: `134.209.100.226` (Ubuntu 24.04, shared with SofiaCart, which is not touched by any of this).
 Everything BlitzMove-specific lives in `/opt/blitzmove` on the server:
 
@@ -14,12 +15,14 @@ Everything BlitzMove-specific lives in `/opt/blitzmove` on the server:
 ## Layout
 
 ```
-internet :80 ─ host nginx (/etc/nginx/sites-available/blitzmove-ip)
+internet :443 ─ host nginx (/etc/nginx/sites-available/blitzmove; :80 and the bare IP redirect here)
                  ├─ /api/v1/*, /up ─► 127.0.0.1:8100  web (nginx, public/ only) ─► app (PHP-FPM 8.3)
                  └─ everything else ► 127.0.0.1:3100  frontend (Next.js standalone, node server.js)
                                                      app, scheduler ─► db (MySQL 8.4, no published port)
 ```
 
+* Laravel is at `/api/v1` rather than all of `/api`, because Next.js owns `/api/auth/*`, `/api/proxy/*` and
+  `/api/health` on the same domain.
 * The browser only talks to Next.js. Next.js calls Laravel server-side (`API_URL=http://web`), so no CORS
   is needed, and the Sanctum token stays in the httpOnly `bm_session` cookie.
 * `scheduler` runs `php artisan schedule:work` (prunes expired tokens daily). Queues run `sync`; no worker.
@@ -29,10 +32,11 @@ internet :80 ─ host nginx (/etc/nginx/sites-available/blitzmove-ip)
 
 ## Deploying an update
 
-From `blitzmove-backend` on the Mac, with both repos' branches pushed:
+On the Mac, with Docker Desktop running and both repos' branches pushed:
 
 ```bash
-HEALTH_URL=http://134.209.100.226 deploy/production/deploy.sh trip-scheduling-overhaul
+cd ~/Desktop/blitzmove/blitzmove-backend
+HEALTH_URL=https://blitzmove.blitzdev.com.ph deploy/production/deploy.sh trip-scheduling-overhaul
 ```
 
 It builds the three images locally, uploads them, backs up the database, runs `migrate --force`, restarts the
@@ -55,11 +59,14 @@ docker compose exec app php artisan <command>
 gunzip -c backups/<file>.sql.gz | docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" blitzmove'   # restore
 ```
 
-## Moving to a domain with HTTPS
+## HTTPS and server security
 
-1. Point an A record (e.g. `blitzmove.example.com`) at `134.209.100.226`.
-2. Install `nginx/host-site.conf` as `/etc/nginx/sites-available/blitzmove` with the real domain, but first
-   comment out its 443 server, then `nginx -t && systemctl reload nginx`.
-3. `certbot certonly --webroot -w /var/www/letsencrypt -d blitzmove.example.com`, then restore the 443 server and reload.
-4. Remove the `blitzmove-ip` site. In `backend.env` set `APP_URL`/`FRONTEND_URL` to `https://…` and
-   `SESSION_SECURE_COOKIE=true`; in `.env` set `SESSION_COOKIE_SECURE=true`. Then `docker compose up -d`.
+* Let's Encrypt certificate for `blitzmove.blitzdev.com.ph` (webroot `/var/www/letsencrypt`), renewed by
+  `certbot.timer`; `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh` reloads nginx after a renewal.
+  Check with `certbot certificates` or `certbot renew --dry-run`.
+* Secure, httpOnly session cookie (`SESSION_COOKIE_SECURE=true`, `SESSION_SECURE_COOKIE=true`) and HSTS.
+* SSH is key-only (`/etc/ssh/sshd_config.d/00-hardening.conf`). Add another person's key to
+  `/root/.ssh/authorized_keys` before they need access; the DigitalOcean web console still works for recovery.
+* fail2ban bans an IP for 1 h after 5 failed SSH logins in 10 min (`fail2ban-client status sshd`;
+  unban with `fail2ban-client set sshd unbanip <ip>`).
+* ufw allows only 22, 80 and 443. Docker publishes BlitzMove's ports on 127.0.0.1 only.
