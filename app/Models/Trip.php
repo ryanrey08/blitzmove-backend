@@ -87,6 +87,26 @@ class Trip extends Model
     }
 
     /** Trips whose window overlaps [$start, $end] and still hold their vehicle/driver. */
+    /** Users limited to trips.view_assigned (drivers) see only trips they drive or co-drive. */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        if (! $user->seesOnlyAssignedTrips()) {
+            return $query;
+        }
+        $driverId = $user->driver()->value('id');
+
+        return $driverId
+            ? $query->where(fn (Builder $q) => $q->where('driver_id', $driverId)->orWhere('co_driver_id', $driverId))
+            : $query->whereRaw('1 = 0');
+    }
+
+    public function isAssignedTo(User $user): bool
+    {
+        $driverId = $user->driver()->value('id');
+
+        return $driverId !== null && in_array($driverId, [$this->driver_id, $this->co_driver_id], true);
+    }
+
     public function scopeOverlapping(Builder $query, $start, $end): Builder
     {
         return $query

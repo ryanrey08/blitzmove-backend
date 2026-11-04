@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Models\Trip;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -30,7 +29,7 @@ class ItineraryBoardTest extends TestCase
 
     public function test_board_lists_stops_across_trips_by_day_in_time_order(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $tomorrow = now()->addDay()->setTime(8, 0);
         $a = $this->tripWithStops(['departure_at' => $tomorrow, 'estimated_arrival_at' => $tomorrow->copy()->addHours(4)], ['Depot A', 'Mid A', 'End A']);
         $this->tripWithStops(['departure_at' => $tomorrow->copy()->addHour(), 'estimated_arrival_at' => $tomorrow->copy()->addHours(5)], ['Depot B', 'End B']);
@@ -49,7 +48,7 @@ class ItineraryBoardTest extends TestCase
 
     public function test_board_filters_by_status_trip_status_and_search(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $active = $this->tripWithStops(['status' => TripStatus::InProgress], ['Taguig Hub', 'Calamba Plant']);
         $active->stops()->first()->update(['status' => 'completed']);
         $this->tripWithStops([], ['Manila Port', 'Lipa Yard']);

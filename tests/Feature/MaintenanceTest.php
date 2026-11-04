@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\UserRole;
 use App\Models\MaintenanceRecord;
 use App\Models\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,7 +27,7 @@ class MaintenanceTest extends TestCase
 
     public function test_creates_lists_and_filters_maintenance(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
         $vehicle = Vehicle::factory()->create(['plate_number' => 'GHI-9012']);
         MaintenanceRecord::factory()->completed(today()->subMonths(3)->toDateString())->create(['vehicle_id' => $vehicle->id, 'reference_number' => 'MNT-OLD-1']);
 
@@ -69,7 +68,7 @@ class MaintenanceTest extends TestCase
 
     public function test_validates_maintenance(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
         $vehicle = Vehicle::factory()->create();
         MaintenanceRecord::factory()->create(['reference_number' => 'MNT-TAKEN']);
 
@@ -90,7 +89,7 @@ class MaintenanceTest extends TestCase
 
     public function test_status_changes_move_the_vehicle_in_and_out_of_service(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
         $vehicle = Vehicle::factory()->create(['status' => 'available', 'odometer_km' => 50000]);
 
         $id = $this->postJson($this->api('maintenance-records'), $this->payload($vehicle, ['status' => 'in_progress', 'odometer_km' => 51000]))
@@ -113,7 +112,7 @@ class MaintenanceTest extends TestCase
     public function test_attachments_and_permissions(): void
     {
         Storage::fake('local');
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
         $record = MaintenanceRecord::factory()->create();
 
         $this->post($this->api("maintenance-records/{$record->id}/files"), ['file' => UploadedFile::fake()->create('job.exe', 10)], ['Accept' => 'application/json'])
@@ -129,14 +128,14 @@ class MaintenanceTest extends TestCase
         $this->deleteJson($this->api("maintenance-records/{$record->id}"))->assertOk();
         $this->assertSoftDeleted('maintenance_records', ['id' => $record->id]);
 
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $this->getJson($this->api('maintenance-records'))->assertOk();
         $this->postJson($this->api('maintenance-records'), [])->assertForbidden();
     }
 
     public function test_detail_includes_vehicle_and_viewers_can_read_it(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $record = MaintenanceRecord::factory()->create();
 
         $this->getJson($this->api("maintenance-records/{$record->id}"))->assertOk()

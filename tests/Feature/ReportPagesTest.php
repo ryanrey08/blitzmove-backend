@@ -6,7 +6,6 @@ use App\Enums\MaintenanceStatus;
 use App\Enums\MaintenanceType;
 use App\Enums\OrderStatus;
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Models\Driver;
 use App\Models\FuelRecord;
 use App\Models\MaintenanceRecord;
@@ -42,7 +41,7 @@ class ReportPagesTest extends TestCase
 
     public function test_trip_report_computes_stats_daily_series_and_filters(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $truck = Vehicle::factory()->create();
         $ana = Driver::factory()->create();
         $ben = Driver::factory()->create();
@@ -73,7 +72,7 @@ class ReportPagesTest extends TestCase
 
     public function test_driver_report_lists_each_driver_with_trip_outcomes(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $truck = Vehicle::factory()->create();
         $van = Vehicle::factory()->create();
         $ana = Driver::factory()->create(['full_name' => 'Ana Cruz']);
@@ -110,7 +109,7 @@ class ReportPagesTest extends TestCase
 
     public function test_maintenance_report_breaks_down_work_and_lists_upcoming(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $truck = Vehicle::factory()->create(['plate_number' => 'TRK-001']);
         $van = Vehicle::factory()->create(['plate_number' => 'VAN-003']);
 
@@ -139,7 +138,7 @@ class ReportPagesTest extends TestCase
 
     public function test_utilization_report_computes_days_hours_and_idle_vehicles(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $truck = Vehicle::factory()->create(['plate_number' => 'AAA-111']);
         Vehicle::factory()->create(['plate_number' => 'ZZZ-999']);
         $driver = Driver::factory()->create();
@@ -168,7 +167,7 @@ class ReportPagesTest extends TestCase
 
     public function test_delivery_report_and_order_delivery_filter(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $order = fn (OrderStatus $status, string $due, ?string $delivered = null, array $more = []) => Order::factory()->create([
             'status' => $status, 'scheduled_pickup_at' => Carbon::parse($due)->subHours(6), 'scheduled_delivery_at' => $due, 'delivered_at' => $delivered, ...$more,
         ]);
@@ -193,7 +192,7 @@ class ReportPagesTest extends TestCase
 
     public function test_saves_custom_report_configurations(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('operations-manager');
         $config = ['source' => 'trips', 'columns' => ['trip_number', 'driver', 'status'], 'sort' => '-departure_at', 'filters' => ['status' => 'completed']];
 
         $this->postJson($this->api('reports'), ['name' => 'Completed trips', 'type' => 'custom', 'from' => '2026-10-01', 'to' => '2026-10-31', 'config' => $config])

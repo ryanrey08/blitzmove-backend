@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\OrderStatus;
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Enums\VehicleStatus;
 use App\Models\FuelRecord;
 use App\Models\Order;
@@ -20,7 +19,7 @@ class DashboardMonitoringTest extends TestCase
 
     public function test_dashboard_reports_counts_from_the_database(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         Order::factory()->count(3)->create();
         Order::factory()->create(['status' => OrderStatus::Delivered]);
         Trip::factory()->create(['status' => TripStatus::InProgress]);
@@ -56,7 +55,7 @@ class DashboardMonitoringTest extends TestCase
     public function test_monitoring_counts_today_and_the_same_day_last_week_from_records(): void
     {
         $this->travelTo(now()->setTime(12, 0));
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         Trip::factory()->create(['status' => TripStatus::InProgress, 'estimated_arrival_at' => now()->addHour()]);
         Trip::factory()->create(['status' => TripStatus::Dispatched, 'estimated_arrival_at' => now()->subHour()]);
         Trip::factory()->create(['status' => TripStatus::InProgress, 'estimated_arrival_at' => now()->subDays(2)]);
@@ -85,7 +84,7 @@ class DashboardMonitoringTest extends TestCase
 
     public function test_monitoring_leaves_speed_empty_without_gps_data(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
 
         $this->getJson($this->api('fleet/monitoring'))->assertOk()
             ->assertJsonPath('data.today.average_speed_kph', null)
@@ -104,7 +103,7 @@ class DashboardMonitoringTest extends TestCase
 
     public function test_gps_shows_no_positions_until_a_device_reports(): void
     {
-        $this->actingAsRole(UserRole::Admin);
+        $this->actingAsRole('super-admin');
         $vehicle = Vehicle::factory()->create();
 
         $this->getJson($this->api('gps/vehicles'))->assertOk()
@@ -127,7 +126,7 @@ class DashboardMonitoringTest extends TestCase
 
     public function test_search_and_meta_endpoints(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         Vehicle::factory()->create(['plate_number' => 'ABC-1234']);
 
         $this->getJson($this->api('search?q=abc-12'))->assertOk()->assertJsonPath('data.0.type', 'vehicle');

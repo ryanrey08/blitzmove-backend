@@ -2,14 +2,14 @@
 
 namespace Tests;
 
-use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Laravel\Sanctum\Sanctum;
 
 abstract class TestCase extends BaseTestCase
 {
-    protected function actingAsRole(UserRole $role = UserRole::Admin): User
+    /** Roles and permissions are seeded by their migration, so every test database has them. */
+    protected function actingAsRole(string $role = 'super-admin'): User
     {
         $user = User::factory()->role($role)->create();
         Sanctum::actingAs($user);

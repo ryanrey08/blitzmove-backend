@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\UserRole;
 use App\Models\DocumentFile;
 use App\Models\Driver;
 use App\Models\DriverDocument;
@@ -20,7 +19,7 @@ class FuelAndDocumentTest extends TestCase
 
     public function test_fuel_records_compute_cost_and_summarise(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
         $vehicle = Vehicle::factory()->create();
 
         $id = $this->postJson($this->api('fuel-records'), [
@@ -46,7 +45,7 @@ class FuelAndDocumentTest extends TestCase
     public function test_fuel_transaction_fields_receipt_photo_and_odometer_sync(): void
     {
         Storage::fake('local');
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
         $vehicle = Vehicle::factory()->create(['odometer_km' => 50000]);
 
         $id = $this->postJson($this->api('fuel-records'), [
@@ -91,7 +90,7 @@ class FuelAndDocumentTest extends TestCase
     public function test_vehicle_document_upload_download_and_expiry_status(): void
     {
         Storage::fake('local');
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
         $vehicle = Vehicle::factory()->create();
 
         $response = $this->post($this->api('documents'), [
@@ -139,7 +138,7 @@ class FuelAndDocumentTest extends TestCase
     public function test_document_files_are_validated_and_scoped_to_their_document(): void
     {
         Storage::fake('local');
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
         $a = VehicleDocument::create(['vehicle_id' => Vehicle::factory()->create()->id, 'document_type' => 'permit', 'title' => 'Permit A']);
         $b = VehicleDocument::create(['vehicle_id' => Vehicle::factory()->create()->id, 'document_type' => 'permit', 'title' => 'Permit B']);
 
@@ -177,7 +176,7 @@ class FuelAndDocumentTest extends TestCase
 
     public function test_viewers_can_read_but_not_upload_documents(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $vehicle = Vehicle::factory()->create();
 
         $this->getJson($this->api('documents'))->assertOk();
@@ -189,7 +188,7 @@ class FuelAndDocumentTest extends TestCase
 
     public function test_detail_endpoints_include_related_records(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $driver = Driver::factory()->create();
         $vehicle = Vehicle::factory()->create();
         $record = FuelRecord::factory()->create(['vehicle_id' => $vehicle->id, 'driver_id' => $driver->id]);

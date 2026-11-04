@@ -31,6 +31,7 @@ class TripStopController extends Controller
             ->select('trip_stops.*')
             ->join('trips', 'trips.id', '=', 'trip_stops.trip_id')
             ->whereNull('trips.deleted_at')
+            ->whereIn('trip_stops.trip_id', Trip::query()->visibleTo($request->user())->select('id'))
             ->with(['order', 'trip.vehicle', 'trip.driver']);
 
         // from/to are dates or ISO datetimes (the UI sends the viewer's local day bounds).
@@ -68,8 +69,10 @@ class TripStopController extends Controller
             ->additional(['counts' => $counts]);
     }
 
-    public function index(Trip $trip): AnonymousResourceCollection
+    public function index(Request $request, Trip $trip): AnonymousResourceCollection
     {
+        abort_if($request->user()->seesOnlyAssignedTrips() && ! $trip->isAssignedTo($request->user()), 404, 'The requested record was not found.');
+
         return TripStopResource::collection($trip->stops()->with('order')->get());
     }
 

@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Models\Driver;
 use App\Models\Trip;
 use App\Models\Vehicle;
@@ -16,7 +15,7 @@ class FleetTest extends TestCase
 
     public function test_manager_can_manage_vehicles(): void
     {
-        $this->actingAsRole(UserRole::Manager);
+        $this->actingAsRole('administrator');
         $driver = Driver::factory()->create();
 
         $id = $this->postJson($this->api('vehicles'), [
@@ -60,7 +59,7 @@ class FleetTest extends TestCase
 
     public function test_manager_can_manage_drivers(): void
     {
-        $this->actingAsRole(UserRole::Manager);
+        $this->actingAsRole('administrator');
 
         $response = $this->postJson($this->api('drivers'), [
             'full_name' => 'Ramon Santos', 'phone' => '0917 123 4567', 'email' => 'ramon@example.com',
@@ -87,7 +86,7 @@ class FleetTest extends TestCase
 
     public function test_dispatchers_cannot_change_fleet_master_data(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
         $vehicle = Vehicle::factory()->create();
         $driver = Driver::factory()->create();
 

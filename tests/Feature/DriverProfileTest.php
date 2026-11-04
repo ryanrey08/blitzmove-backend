@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Models\Driver;
 use App\Models\DriverDocument;
 use App\Models\FuelRecord;
@@ -40,7 +39,7 @@ class DriverProfileTest extends TestCase
 
     public function test_driver_is_created_with_profile_and_assigned_vehicle(): void
     {
-        $this->actingAsRole(UserRole::Manager);
+        $this->actingAsRole('administrator');
         $vehicle = Vehicle::factory()->create();
 
         $response = $this->postJson($this->api('drivers'), $this->payload(['assigned_vehicle_id' => $vehicle->id]))->assertCreated()
@@ -62,7 +61,7 @@ class DriverProfileTest extends TestCase
 
     public function test_profile_rules(): void
     {
-        $this->actingAsRole(UserRole::Manager);
+        $this->actingAsRole('administrator');
         $this->postJson($this->api('drivers'), $this->payload())->assertCreated();
 
         $this->postJson($this->api('drivers'), $this->payload(['date_of_birth' => now()->subYears(17)->toDateString(), 'emergency_contact_phone' => null]))
@@ -73,7 +72,7 @@ class DriverProfileTest extends TestCase
     public function test_photo_upload_replace_and_remove(): void
     {
         Storage::fake('local');
-        $this->actingAsRole(UserRole::Manager);
+        $this->actingAsRole('administrator');
         $driver = Driver::factory()->create();
 
         $this->post($this->api("drivers/{$driver->id}/photo"), ['photo' => UploadedFile::fake()->create('a.jpg', 100, 'image/jpeg')], ['Accept' => 'application/json'])->assertOk();
@@ -86,13 +85,13 @@ class DriverProfileTest extends TestCase
         $this->deleteJson($this->api("drivers/{$driver->id}/photo"))->assertOk();
         $this->get($this->api("drivers/{$driver->id}/photo"))->assertNotFound();
 
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $this->post($this->api("drivers/{$driver->id}/photo"), ['photo' => UploadedFile::fake()->create('c.jpg', 10, 'image/jpeg')], ['Accept' => 'application/json'])->assertForbidden();
     }
 
     public function test_detail_includes_thirty_day_performance(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $driver = Driver::factory()->create();
         Trip::factory()->create(['driver_id' => $driver->id, 'status' => TripStatus::Completed, 'estimated_arrival_at' => now()->subDays(2), 'actual_arrival_at' => now()->subDays(2)->subHour()]);
         Trip::factory()->create(['driver_id' => $driver->id, 'status' => TripStatus::Completed, 'estimated_arrival_at' => now()->subDays(3), 'actual_arrival_at' => now()->subDays(3)->addHour()]);
@@ -104,7 +103,7 @@ class DriverProfileTest extends TestCase
 
     public function test_detail_includes_assigned_vehicle_fuel_and_documents(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $driver = Driver::factory()->create();
         $vehicle = Vehicle::factory()->create(['assigned_driver_id' => $driver->id]);
         FuelRecord::factory()->create(['driver_id' => $driver->id, 'vehicle_id' => $vehicle->id, 'fueled_at' => now()->subDays(2)]);

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\UserRole;
 use App\Models\Trip;
 use App\Models\Vehicle;
 use App\Models\VehicleLocation;
@@ -27,7 +26,7 @@ class RoutePlanningTest extends TestCase
 
     public function test_optimized_reorder_marks_the_route_and_manual_changes_clear_it(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
         $trip = $this->tripWithStops(2);
         [$a, $b] = $trip->stops()->where('type', 'stop')->pluck('id')->all();
 
@@ -51,7 +50,7 @@ class RoutePlanningTest extends TestCase
 
     public function test_only_trips_with_stops_to_reorder_need_planning(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $this->tripWithStops(0);
         $this->tripWithStops(1);
         $needs = $this->tripWithStops(2);
@@ -62,7 +61,7 @@ class RoutePlanningTest extends TestCase
 
     public function test_vehicle_track_returns_positions_and_a_map_when_configured(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $vehicle = Vehicle::factory()->create();
         foreach ([[14.60, 121.00], [14.55, 121.02], [14.50, 121.05]] as $i => [$lat, $lng]) {
             VehicleLocation::create(['vehicle_id' => $vehicle->id, 'latitude' => $lat, 'longitude' => $lng, 'speed_kph' => 40, 'recorded_at' => now()->subMinutes(30 - $i * 10)]);

@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\OrderStatus;
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Models\Order;
 use App\Models\Trip;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -30,9 +29,9 @@ class OrderTest extends TestCase
         ];
     }
 
-    public function test_dispatcher_can_create_an_order_with_a_generated_number(): void
+    public function test_administrator_can_create_an_order_with_a_generated_number(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
 
         $first = $this->postJson($this->api('orders'), $this->payload())->assertCreated()
             ->assertJsonPath('data.status', 'pending')->json('data.order_number');
@@ -54,7 +53,7 @@ class OrderTest extends TestCase
 
     public function test_orders_can_be_searched_filtered_sorted_and_paginated(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         Order::factory()->count(12)->create();
         Order::factory()->create(['customer_name' => 'Mega Plastics', 'status' => OrderStatus::Delivered]);
 
@@ -125,7 +124,7 @@ class OrderTest extends TestCase
 
     public function test_viewers_cannot_modify_orders(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $order = Order::factory()->create();
 
         $this->postJson($this->api('orders'), $this->payload())->assertForbidden();

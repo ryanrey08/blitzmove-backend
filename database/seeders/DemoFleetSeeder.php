@@ -81,7 +81,7 @@ class DemoFleetSeeder extends Seeder
         if (Vehicle::withTrashed()->exists() || Order::withTrashed()->exists()) {
             // Maintenance came later; databases seeded before it still get sample records.
             if (! MaintenanceRecord::withTrashed()->exists() && Vehicle::exists()) {
-                $this->maintenance(Vehicle::orderBy('id')->get(), User::where('role', 'admin')->first());
+                $this->maintenance(Vehicle::orderBy('id')->get(), User::whereHas('role', fn ($q) => $q->where('slug', 'super-admin'))->first());
                 $this->command?->info('Added demo maintenance records.');
             }
             $this->command?->info('Fleet or order data already exists; skipping demo data.');
@@ -90,7 +90,7 @@ class DemoFleetSeeder extends Seeder
         }
 
         mt_srand(2026);
-        $admin = User::where('role', 'admin')->first();
+        $admin = User::whereHas('role', fn ($q) => $q->where('slug', 'super-admin'))->first();
 
         $drivers = $this->drivers();
         $vehicles = $this->vehicles($drivers);

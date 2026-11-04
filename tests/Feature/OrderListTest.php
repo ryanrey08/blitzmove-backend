@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Enums\OrderStatus;
-use App\Enums\UserRole;
 use App\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -14,7 +13,7 @@ class OrderListTest extends TestCase
 
     public function test_amount_and_payment_terms_are_saved_and_validated(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
         $payload = [
             'customer_name' => 'Mega Plastics',
             'customer_contact' => '0917 555 1234',
@@ -38,7 +37,7 @@ class OrderListTest extends TestCase
 
     public function test_list_filters_by_customer_destination_order_date_and_delay(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $late = Order::factory()->create(['customer_name' => 'Mega Plastics', 'delivery_address' => '456 Logistics St, Quezon City', 'scheduled_pickup_at' => now()->subDays(2), 'scheduled_delivery_at' => now()->subDay()]);
         Order::factory()->create(['customer_name' => 'Oxychem Corp.', 'delivery_address' => 'Calamba, Laguna']);
         Order::factory()->create(['customer_name' => 'Old Co.', 'status' => OrderStatus::Delivered, 'scheduled_delivery_at' => now()->subDay(), 'created_at' => now()->subMonths(2)]);
@@ -56,7 +55,7 @@ class OrderListTest extends TestCase
 
     public function test_summary_includes_monthly_bookings_and_delayed_count(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         Order::factory()->count(3)->create();
         Order::factory()->create(['created_at' => now()->startOfMonth()->subDays(3)]);
         Order::factory()->create(['scheduled_pickup_at' => now()->subDays(2), 'scheduled_delivery_at' => now()->subDay()]);

@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Models\Driver;
 use App\Models\Trip;
 use App\Models\Vehicle;
@@ -16,7 +15,7 @@ class DispatchTripTest extends TestCase
 
     public function test_trip_is_dispatched_with_time_notes_and_creator(): void
     {
-        $user = $this->actingAsRole(UserRole::Dispatcher);
+        $user = $this->actingAsRole('dispatcher');
         $trip = Trip::factory()->create(['created_by' => $user->id]);
         $at = now()->subMinutes(30)->startOfMinute();
 
@@ -32,7 +31,7 @@ class DispatchTripTest extends TestCase
 
     public function test_a_trip_cannot_be_dispatched_twice(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
         $trip = Trip::factory()->create();
 
         $this->patchJson($this->api("trips/{$trip->id}/status"), ['status' => 'dispatched'])->assertOk();
@@ -44,7 +43,7 @@ class DispatchTripTest extends TestCase
 
     public function test_vehicle_and_driver_can_be_changed_while_dispatching(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
         $trip = Trip::factory()->create();
         $vehicle = Vehicle::factory()->create();
         $driver = Driver::factory()->create();
@@ -60,7 +59,7 @@ class DispatchTripTest extends TestCase
 
     public function test_dispatch_input_is_validated(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
         $trip = Trip::factory()->create();
         $busy = Trip::factory()->create();
 
@@ -77,7 +76,7 @@ class DispatchTripTest extends TestCase
 
     public function test_only_transitions_allowed_by_the_status_are_accepted(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
 
         foreach ([
             [TripStatus::InProgress, 'dispatched'],

@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\OrderStatus;
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Models\Driver;
 use App\Models\Order;
 use App\Models\Trip;
@@ -37,7 +36,7 @@ class TripManagementTest extends TestCase
 
     public function test_trip_is_created_with_planning_details_and_co_driver(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
         $coDriver = Driver::factory()->create();
 
         $this->postJson($this->api('trips'), $this->payload(['co_driver_id' => $coDriver->id]))
@@ -54,7 +53,7 @@ class TripManagementTest extends TestCase
 
     public function test_next_trip_number_is_previewed(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('dispatcher');
         Trip::factory()->create(['trip_number' => 'TRIP-'.now()->year.'-0007']);
 
         $this->getJson($this->api('trips/next-number'))->assertOk()->assertJsonPath('data.trip_number', 'TRIP-'.now()->year.'-0008');
@@ -82,7 +81,7 @@ class TripManagementTest extends TestCase
 
     public function test_editing_can_change_resources_details_and_stops(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
         $trip = Trip::find($this->postJson($this->api('trips'), $this->payload())->json('data.id'));
         $vehicle = Vehicle::factory()->create();
 
@@ -109,7 +108,7 @@ class TripManagementTest extends TestCase
 
     public function test_deleting_a_trip_soft_deletes_it_and_releases_the_order(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('administrator');
         $order = Order::factory()->create();
         $tripId = $this->postJson($this->api('trips'), $this->payload(['order_id' => $order->id]))->json('data.id');
         $this->assertSame(OrderStatus::Scheduled, $order->fresh()->status);
@@ -130,14 +129,14 @@ class TripManagementTest extends TestCase
         $this->deleteJson($this->api("trips/{$active->id}"))->assertStatus(422);
         $this->assertNotSoftDeleted('trips', ['id' => $active->id]);
 
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $trip = Trip::factory()->create();
         $this->deleteJson($this->api("trips/{$trip->id}"))->assertForbidden();
     }
 
     public function test_list_filters_by_type_priority_and_searches_reference(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         Trip::factory()->create(['trip_type' => 'pickup', 'priority' => 'urgent', 'reference_no' => 'REF-ABC']);
         Trip::factory()->create(['departure_at' => now()->addDays(5), 'estimated_arrival_at' => now()->addDays(5)->addHours(2)]);
 

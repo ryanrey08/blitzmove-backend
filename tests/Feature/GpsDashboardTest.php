@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\MaintenanceStatus;
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Models\MaintenanceRecord;
 use App\Models\Trip;
 use App\Models\Vehicle;
@@ -28,7 +27,7 @@ class GpsDashboardTest extends TestCase
 
     public function test_fleet_map_uses_stored_positions_and_ignores_vehicles_without_one(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $this->mapbox();
         $reporting = Vehicle::factory()->create();
         $silent = Vehicle::factory()->create();
@@ -49,7 +48,7 @@ class GpsDashboardTest extends TestCase
 
     public function test_vehicle_list_includes_place_names_when_a_map_provider_is_set_up(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $vehicle = Vehicle::factory()->create();
         VehicleLocation::create(['vehicle_id' => $vehicle->id, 'latitude' => 14.2, 'longitude' => 121.16, 'recorded_at' => now()]);
 
@@ -61,7 +60,7 @@ class GpsDashboardTest extends TestCase
 
     public function test_events_list_todays_trip_and_stop_activity_newest_first(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $trip = Trip::factory()->create(['status' => TripStatus::InProgress, 'dispatched_at' => now()->subHours(3), 'actual_departure_at' => now()->subHours(2)]);
         $trip->stops()->create(['sequence' => 1, 'type' => 'pickup', 'location_name' => 'Depot', 'status' => 'completed', 'actual_arrival_at' => now()->subHour()]);
         Trip::factory()->create(['dispatched_at' => now()->subDays(2)]);
@@ -75,7 +74,7 @@ class GpsDashboardTest extends TestCase
     public function test_events_can_be_limited_to_one_vehicle(): void
     {
         $this->travelTo(now()->setTime(12, 0));
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $trip = Trip::factory()->create(['status' => TripStatus::InProgress, 'actual_departure_at' => now()->subHour()]);
         Trip::factory()->create(['status' => TripStatus::InProgress, 'actual_departure_at' => now()->subHour()]);
 
@@ -88,7 +87,7 @@ class GpsDashboardTest extends TestCase
 
     public function test_viewport_map_fits_reported_positions_without_drawing_pins(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $this->mapbox();
         $a = Vehicle::factory()->create();
         $b = Vehicle::factory()->create();
@@ -118,7 +117,7 @@ class GpsDashboardTest extends TestCase
 
     public function test_viewport_map_accepts_an_explicit_view_and_falls_back_to_the_service_area(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $this->mapbox();
 
         $this->postJson($this->api('gps/viewport'), ['vehicle_ids' => [], 'lng' => 121.05, 'lat' => 14.55, 'zoom' => 14, 'style' => 'satellite'])
@@ -134,7 +133,7 @@ class GpsDashboardTest extends TestCase
 
     public function test_viewport_map_has_no_image_without_a_map_provider(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
 
         $this->postJson($this->api('gps/viewport'), ['vehicle_ids' => []])->assertOk()->assertJsonPath('data.image', null);
     }
@@ -142,7 +141,7 @@ class GpsDashboardTest extends TestCase
     public function test_fleet_trend_rebuilds_status_counts_for_now_and_last_month(): void
     {
         $this->travelTo(now()->setDate(2026, 10, 15)->setTime(12, 0));
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $old = Vehicle::factory()->count(3)->create(['created_at' => now()->subMonths(2)]);
         Vehicle::factory()->create(['created_at' => now()->subWeek()]);
 

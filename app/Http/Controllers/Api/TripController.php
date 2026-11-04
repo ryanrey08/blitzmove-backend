@@ -30,7 +30,7 @@ class TripController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Trip::query()->with(['order', 'vehicle', 'driver', 'coDriver', 'dispatcher'])->withCount('stops');
+        $query = Trip::query()->visibleTo($request->user())->with(['order', 'vehicle', 'driver', 'coDriver', 'dispatcher'])->withCount('stops');
 
         $this->applySearch($query, $request, ['trip_number', 'reference_no', 'origin', 'destination', 'order.order_number', 'driver.full_name', 'vehicle.plate_number']);
         $this->applyFilters($query, $request, ['status', 'trip_type', 'priority', 'vehicle_id', 'driver_id', 'order_id']);
@@ -63,9 +63,9 @@ class TripController extends Controller
         return TripResource::collection($query->paginate($this->perPage($request))->withQueryString());
     }
 
-    public function summary(DashboardService $dashboard): JsonResponse
+    public function summary(Request $request, DashboardService $dashboard): JsonResponse
     {
-        return response()->json(['data' => $dashboard->distributionWithTrend(Trip::query(), TripStatus::class)]);
+        return response()->json(['data' => $dashboard->distributionWithTrend(Trip::query()->visibleTo($request->user()), TripStatus::class)]);
     }
 
     public function availability(AvailabilityRequest $request): JsonResponse
@@ -97,8 +97,10 @@ class TripController extends Controller
             ->response()->setStatusCode(201);
     }
 
-    public function show(Trip $trip): TripResource
+    public function show(Request $request, Trip $trip): TripResource
     {
+        $this->ensureVisible($request, $trip);
+
         return TripResource::make($this->detailed($trip));
     }
 
@@ -126,9 +128,22 @@ class TripController extends Controller
     public function updateStatus(UpdateTripStatusRequest $request, Trip $trip): TripResource
     {
         $status = TripStatus::from($request->input('status'));
+
+        // Without dispatch.update (drivers): only their own trips, and only starting or completing them.
+        if (! $request->user()->hasPermission('dispatch.update')) {
+            abort_unless($trip->isAssignedTo($request->user()), 403, 'You can only update trips assigned to you.');
+            abort_unless(in_array($status, [TripStatus::InProgress, TripStatus::Completed], true) && ! $request->filled(['vehicle_id']), 403, 'You can only start or complete your trips.');
+        }
         $this->trips->changeStatus($trip, $status, $request->user(), $request->input('notes'), $request->only(['dispatched_at', 'vehicle_id', 'driver_id']));
 
         return TripResource::make($this->detailed($trip))->additional(['message' => "Trip {$trip->trip_number} is now {$status->label()}."]);
+    }
+
+    private function ensureVisible(Request $request, Trip $trip): void
+    {
+        if ($request->user()->seesOnlyAssignedTrips() && ! $trip->isAssignedTo($request->user())) {
+            abort(404, 'The requested record was not found.');
+        }
     }
 
     private function detailed(Trip $trip): Trip

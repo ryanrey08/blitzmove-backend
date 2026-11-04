@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Enums\DriverStatus;
 use App\Enums\OrderStatus;
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Enums\VehicleStatus;
 use App\Models\Driver;
 use App\Models\Order;
@@ -36,7 +35,7 @@ class TripDispatchTest extends TestCase
 
     public function test_scheduling_a_trip_creates_stops_an_assignment_and_schedules_the_order(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
         $order = Order::factory()->create();
 
         $response = $this->postJson($this->api('trips'), $this->schedulePayload(['order_id' => $order->id]))
@@ -101,7 +100,7 @@ class TripDispatchTest extends TestCase
 
     public function test_availability_lists_only_free_resources(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('dispatcher');
         $busy = Trip::factory()->create();
         $freeVehicle = Vehicle::factory()->create();
         Vehicle::factory()->create(['status' => VehicleStatus::Inactive]);
@@ -117,7 +116,7 @@ class TripDispatchTest extends TestCase
 
     public function test_full_dispatch_lifecycle_updates_order_vehicle_and_driver(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
         $order = Order::factory()->create();
         $tripId = $this->postJson($this->api('trips'), $this->schedulePayload(['order_id' => $order->id]))->json('data.id');
 
@@ -176,7 +175,7 @@ class TripDispatchTest extends TestCase
 
     public function test_trips_list_supports_dispatch_scope_and_filters(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         Trip::factory()->create(['status' => TripStatus::Scheduled]);
         Trip::factory()->create(['status' => TripStatus::Completed]);
         Trip::factory()->create(['status' => TripStatus::Dispatched]);
@@ -228,7 +227,7 @@ class TripDispatchTest extends TestCase
 
     public function test_viewers_cannot_schedule_or_dispatch(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $trip = Trip::factory()->create();
 
         $this->postJson($this->api('trips'), $this->schedulePayload())->assertForbidden();

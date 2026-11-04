@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
-use App\Http\Resources\UserResource;
+use App\Http\Resources\CurrentUserResource;
 use App\Models\User;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
@@ -30,8 +30,9 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['email' => __('auth.failed')]);
         }
 
-        if (! $user->is_active) {
-            throw ValidationException::withMessages(['email' => 'This account has been deactivated. Contact your administrator.']);
+        if (! $user->canAuthenticate()) {
+            $reason = $user->status?->value === 'suspended' ? 'suspended' : 'deactivated';
+            throw ValidationException::withMessages(['email' => "This account has been {$reason}. Contact your administrator."]);
         }
 
         $remember = $request->boolean('remember');
@@ -47,14 +48,24 @@ class AuthController extends Controller
                 'token' => $token->plainTextToken,
                 'token_type' => 'Bearer',
                 'expires_at' => $expiresAt->toIso8601String(),
-                'user' => UserResource::make($user),
+                'user' => CurrentUserResource::make($user->load('role')),
             ],
         ]);
     }
 
-    public function me(Request $request): UserResource
+    public function me(Request $request): CurrentUserResource
     {
-        return UserResource::make($request->user());
+        return CurrentUserResource::make($request->user()->load('role'));
+    }
+
+    public function permissions(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        return response()->json(['data' => [
+            'role' => $user->role?->slug,
+            'permissions' => $user->permissionSlugs(),
+        ]]);
     }
 
     public function logout(Request $request): JsonResponse

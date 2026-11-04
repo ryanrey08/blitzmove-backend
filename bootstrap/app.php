@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\EnsureUserHasPermission;
+use App\Http\Middleware\EnsureUserIsActive;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -19,6 +21,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // (e.g. TRUSTED_PROXIES=172.16.0.0/12 for the Docker network) makes $request->ip() the
         // visitor's address, so the login rate limits apply per visitor.
         // API-only: there is no "login" route to send guests to, so they get a JSON 401 instead.
+        $middleware->alias([
+            'permission' => EnsureUserHasPermission::class,
+            'active' => EnsureUserIsActive::class,
+        ]);
+
         $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') ? null : '/');
 
         if ($proxies = env('TRUSTED_PROXIES')) {

@@ -30,7 +30,7 @@ class MetaController extends Controller
             'maintenance_statuses' => Enums\MaintenanceStatus::options(),
             'vehicle_document_types' => Enums\VehicleDocumentType::options(),
             'driver_document_types' => Enums\DriverDocumentType::options(),
-            'user_roles' => Enums\UserRole::options(),
+            'user_statuses' => Enums\UserStatus::options(),
             'report_types' => Enums\ReportType::options(),
         ]]);
     }

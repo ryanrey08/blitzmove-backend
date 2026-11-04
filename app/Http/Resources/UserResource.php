@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+/** A user as embedded in other records (created by, dispatched by, ...). */
 /** @mixin User */
 class UserResource extends JsonResource
 {
@@ -15,15 +16,7 @@ class UserResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
-            'role' => $this->role?->value,
             'job_title' => $this->job_title,
-            'phone' => $this->phone,
-            'is_active' => $this->is_active,
-            'last_login_at' => $this->last_login_at?->toIso8601String(),
-            'permissions' => [
-                'manage_operations' => $this->canManageOperations(),
-                'manage_fleet' => $this->canManageFleet(),
-            ],
         ];
     }
 }

@@ -38,8 +38,9 @@ class AppServiceProvider extends ServiceProvider
     {
         Relation::morphMap(['vehicle_document' => VehicleDocument::class, 'driver_document' => DriverDocument::class, 'maintenance_record' => MaintenanceRecord::class]);
 
-        Gate::define('manage-operations', fn (User $user) => $user->canManageOperations());
-        Gate::define('manage-fleet', fn (User $user) => $user->canManageFleet());
+        // RBAC: any "module.action" ability resolves against the user's role permissions,
+        // so $user->can('orders.update') and @can / can: middleware all work.
+        Gate::before(fn (User $user, string $ability) => str_contains($ability, '.') ? $user->hasPermission($ability) : null);
 
         RateLimiter::for('auth', function (Request $request) {
             return [

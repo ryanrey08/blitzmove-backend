@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\UserRole;
 use App\Models\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -49,7 +48,7 @@ class VehicleProfileTest extends TestCase
 
     public function test_vehicle_is_created_with_profile_and_expiry_documents(): void
     {
-        $this->actingAsRole(UserRole::Manager);
+        $this->actingAsRole('administrator');
 
         $id = $this->postJson($this->api('vehicles'), $this->payload())->assertCreated()
             ->assertJsonPath('data.color', 'White')
@@ -70,7 +69,7 @@ class VehicleProfileTest extends TestCase
 
     public function test_profile_fields_are_validated_and_identifiers_stay_unique(): void
     {
-        $this->actingAsRole(UserRole::Manager);
+        $this->actingAsRole('administrator');
         $this->postJson($this->api('vehicles'), $this->payload())->assertCreated();
 
         $this->postJson($this->api('vehicles'), $this->payload(['vin' => 'OTHER-VIN', 'wheels' => 5, 'features' => ['jetpack'], 'emission_standard' => 'Euro 9', 'acquired_at' => now()->addDay()->toDateString()]))
@@ -81,7 +80,7 @@ class VehicleProfileTest extends TestCase
     public function test_photos_upload_list_cover_and_delete_with_a_limit_of_five(): void
     {
         Storage::fake('local');
-        $this->actingAsRole(UserRole::Manager);
+        $this->actingAsRole('administrator');
         $vehicle = Vehicle::factory()->create();
 
         $ids = [];
@@ -107,7 +106,7 @@ class VehicleProfileTest extends TestCase
         // Photos are scoped to their vehicle, and viewers can't change them.
         $other = Vehicle::factory()->create();
         $this->get($this->api("vehicles/{$other->id}/photos/{$ids[1]}"))->assertNotFound();
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $this->deleteJson($this->api("vehicles/{$vehicle->id}/photos/{$ids[1]}"))->assertForbidden();
     }
 }

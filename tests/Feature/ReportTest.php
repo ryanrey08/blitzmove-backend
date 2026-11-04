@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Enums\TripStatus;
-use App\Enums\UserRole;
 use App\Models\Driver;
 use App\Models\FuelRecord;
 use App\Models\Report;
@@ -37,7 +36,7 @@ class ReportTest extends TestCase
 
     public function test_overview_computes_stats_series_and_previous_period(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $truck = Vehicle::factory()->create();
         $van = Vehicle::factory()->create();
         $ana = Driver::factory()->create();
@@ -92,7 +91,7 @@ class ReportTest extends TestCase
 
     public function test_fuel_report_computes_stats_breakdowns_and_filters(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $truck = Vehicle::factory()->create(['plate_number' => 'TRK-001']);
         $van = Vehicle::factory()->create(['plate_number' => 'VAN-003']);
         $ana = Driver::factory()->create(['full_name' => 'Ana Cruz']);
@@ -160,7 +159,7 @@ class ReportTest extends TestCase
 
     public function test_generates_lists_previews_and_deletes_reports(): void
     {
-        $user = $this->actingAsRole(UserRole::Dispatcher);
+        $user = $this->actingAsRole('operations-manager');
         $truck = Vehicle::factory()->create(['plate_number' => 'ABC-1234']);
         $idle = Vehicle::factory()->create(['plate_number' => 'ZZZ-9999']);
         $driver = Driver::factory()->create();
@@ -212,7 +211,7 @@ class ReportTest extends TestCase
 
     public function test_viewers_can_only_delete_their_own_reports(): void
     {
-        $viewer = $this->actingAsRole(UserRole::Viewer);
+        $viewer = $this->actingAsRole('viewer');
         $other = Report::factory()->create();
         $own = Report::factory()->create(['generated_by' => $viewer->id]);
 

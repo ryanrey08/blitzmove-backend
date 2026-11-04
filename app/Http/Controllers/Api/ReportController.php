@@ -110,7 +110,7 @@ class ReportController extends Controller
     /** The author, or anyone who manages operations, can delete a report. */
     public function destroy(Request $request, Report $report): JsonResponse
     {
-        abort_unless($report->generated_by === $request->user()->id || $request->user()->canManageOperations(), 403, 'You can only delete reports you generated.');
+        abort_unless($report->generated_by === $request->user()->id || $request->user()->hasPermission('reports.delete'), 403, 'You can only delete reports you generated.');
         $report->delete();
 
         return response()->json(['message' => 'Report deleted.']);

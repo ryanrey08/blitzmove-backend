@@ -41,7 +41,7 @@ class AuthTest extends TestCase
     public function test_login_rejects_bad_credentials_and_inactive_users(): void
     {
         User::factory()->create(['email' => 'ops@example.com', 'password' => 'Secret123']);
-        User::factory()->create(['email' => 'gone@example.com', 'password' => 'Secret123', 'is_active' => false]);
+        User::factory()->create(['email' => 'gone@example.com', 'password' => 'Secret123', 'status' => 'inactive']);
 
         $this->postJson($this->api('auth/login'), ['email' => 'ops@example.com', 'password' => 'wrong'])
             ->assertStatus(422)->assertJsonValidationErrors('email');

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\UserRole;
 use App\Models\Trip;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -46,13 +45,13 @@ class MapboxRoutingTest extends TestCase
 
     public function test_status_reports_mapbox_when_configured(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $this->getJson($this->api('routing/status'))->assertJsonPath('data.configured', true)->assertJsonPath('data.provider', 'mapbox');
     }
 
     public function test_preview_routes_and_optimizes_unsaved_stops(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
 
         $this->postJson($this->api('routing/preview'), ['stops' => $this->stops()])
             ->assertOk()
@@ -74,7 +73,7 @@ class MapboxRoutingTest extends TestCase
 
     public function test_unknown_places_are_reported_not_guessed(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
 
         $this->postJson($this->api('routing/preview'), ['stops' => [['label' => 'Depot'], ['label' => 'Nowhere'], ['label' => 'Lipa']], 'optimize' => true])
             ->assertOk()
@@ -87,7 +86,7 @@ class MapboxRoutingTest extends TestCase
 
     public function test_saved_trip_is_optimized_into_stop_ids(): void
     {
-        $this->actingAsRole(UserRole::Dispatcher);
+        $this->actingAsRole('dispatcher');
         $trip = Trip::factory()->create(['origin' => 'Depot', 'destination' => 'Batangas']);
         $first = $trip->stops()->create(['sequence' => 1, 'type' => 'pickup', 'location_name' => 'Depot', 'status' => 'pending']);
         $lipa = $trip->stops()->create(['sequence' => 2, 'type' => 'stop', 'location_name' => 'Lipa', 'status' => 'pending']);
@@ -102,7 +101,7 @@ class MapboxRoutingTest extends TestCase
 
     public function test_a_match_outside_the_address_city_falls_back_to_the_city(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
 
         $this->postJson($this->api('routing/preview'), ['stops' => [['label' => 'Origin', 'query' => 'Bldg 3 FTI Complex, Taguig City'], ['label' => 'Lipa']]])
             ->assertOk()
@@ -112,7 +111,7 @@ class MapboxRoutingTest extends TestCase
 
     public function test_plan_routes_several_trips_on_one_map_without_saving(): void
     {
-        $this->actingAsRole(UserRole::Viewer);
+        $this->actingAsRole('viewer');
         $make = function (array $names) {
             $trip = Trip::factory()->create(['origin' => $names[0], 'destination' => end($names)]);
             foreach ($names as $i => $name) {
